@@ -45,7 +45,7 @@ with col2:
 
 eficiencia_pct = st.slider(
     "Eficiência operacional (%)",
-    min_value=50,
+    min_value=30,
     max_value=95,
     value=int(EFICIENCIA * 100),
     step=5,
