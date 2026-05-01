@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Aula 3 — Streamlit na Web</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --navy:    #0B1D35;
+  --laranja: #FF6B35;
+  --amarelo: #F5C842;
+  --branco:  #EEF2FF;
+  --cinza:   #7B93B8;
+  --verde:   #3FFFA8;
+  --st:      #FF4B4B;
+}
+html, body {
+  width: 100vw; height: 100vh;
+  background: #04101f; overflow: hidden;
+  font-family: system-ui, -apple-system, Arial, sans-serif;
+}
+#stage { position: fixed; top: 0; left: 0; right: 0; bottom: 48px; overflow: hidden; background: #04101f; }
+#deck  { position: absolute; width: 1280px; height: 720px; transform-origin: top left; }
+
+.slide {
+  position: absolute; inset: 0; width: 1280px; height: 720px;
+  background:
+    linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px),
+    var(--navy);
+  background-size: 64px 64px, 64px 64px, auto;
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: flex-start;
+  padding: 56px 88px 66px;
+  opacity: 0; pointer-events: none; transition: opacity .3s ease;
+}
+.slide::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--st), var(--amarelo) 50%, transparent);
+}
+.slide.ativo { opacity: 1; pointer-events: all; }
+
+.tag {
+  font-size: 12px; font-weight: 700; letter-spacing: 4px; text-transform: uppercase;
+  color: var(--st); margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+}
+.tag::before { content: ''; width: 22px; height: 2px; background: currentColor; display: block; }
+.tag.v { color: var(--verde); }
+.tag.a { color: var(--amarelo); }
+.tag.gh { color: #e0e0e0; }
+.tag.cl { color: #D4A574; }
+
+h1 { font-size: 108px; font-weight: 900; line-height: .9; color: var(--branco); text-transform: uppercase; margin-bottom: 12px; }
+h2 { font-size: 62px; font-weight: 900; line-height: .94; color: var(--branco); text-transform: uppercase; margin-bottom: 14px; }
+p  { font-size: 20px; line-height: 1.55; color: var(--cinza); }
+strong { color: var(--branco); }
+ul { list-style: none; }
+
+.sep { width: 54px; height: 4px; background: var(--st); margin: 14px 0; display: block; }
+.sep.v { background: var(--verde); }
+.sep.a { background: var(--amarelo); }
+
+.ac { color: var(--st); }
+.av { color: var(--verde); }
+.aa { color: var(--amarelo); }
+.acl { color: #D4A574; }
+
+.bgn {
+  font-size: 280px; font-weight: 900; color: rgba(255,255,255,.022);
+  position: absolute; right: 10px; bottom: -50px;
+  line-height: 1; user-select: none; pointer-events: none; text-transform: uppercase;
+}
+
+/* COMO FUNCIONA — fluxo horizontal */
+.fluxo {
+  display: flex; align-items: stretch; gap: 0;
+  width: 100%; margin-top: 20px;
+}
+.fluxo-item {
+  flex: 1; background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+  border-top: 3px solid var(--st);
+  padding: 18px 16px; text-align: center;
+}
+.fluxo-item .fi-ico  { font-size: 32px; margin-bottom: 8px; }
+.fluxo-item .fi-nome { font-size: 14px; font-weight: 900; color: var(--branco); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.fluxo-item .fi-desc { font-size: 13px; color: var(--cinza); line-height: 1.4; }
+.fluxo-seta { display: flex; align-items: center; padding: 0 10px; color: var(--st); font-size: 24px; font-weight: 900; flex-shrink: 0; }
+
+/* COMPONENTES GRID */
+.comp-grid {
+  display: grid; grid-template-columns: repeat(4,1fr);
+  gap: 12px; width: 100%; margin-top: 16px;
+}
+.comp-card {
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07);
+  border-top: 3px solid var(--st); padding: 16px 14px;
+}
+.comp-card .cc-cat  { font-size: 9px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--st); margin-bottom: 8px; }
+.comp-card .cc-nome { font-size: 14px; font-weight: 900; color: var(--branco); font-family: 'Courier New', monospace; margin-bottom: 4px; }
+.comp-card .cc-desc { font-size: 12px; color: var(--cinza); line-height: 1.4; }
+.comp-card.v { border-top-color: var(--verde); }
+.comp-card.v .cc-cat { color: var(--verde); }
+.comp-card.a { border-top-color: var(--amarelo); }
+.comp-card.a .cc-cat { color: var(--amarelo); }
+.comp-card.r { border-top-color: #A78BFA; }
+.comp-card.r .cc-cat { color: #A78BFA; }
+
+/* CÓDIGO */
+pre {
+  font-family: 'Courier New', Courier, monospace;
+  background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.07);
+  border-left: 4px solid var(--verde);
+  padding: 20px 26px; font-size: 14px; line-height: 1.85;
+  color: var(--verde); width: 100%; margin-top: 14px; white-space: pre;
+  overflow-x: auto;
+}
+.kw { color: var(--amarelo); }
+.cm { color: #2e4560; }
+.st-str { color: #FF8C69; }
+.fn { color: var(--branco); }
+.nb { color: var(--cinza); }
+.st-fn { color: var(--st); }
+
+/* DOIS LADOS lado a lado */
+.dois { display: flex; width: 100%; margin-top: 16px; gap: 16px; }
+.lado { flex: 1; }
+.lado .lt { font-size: 10px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 10px; color: var(--cinza); }
+
+/* DEPLOY STEPS */
+.deploy-steps { width: 100%; margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.dp-step {
+  display: flex; align-items: flex-start; gap: 18px;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07);
+  border-left: 3px solid var(--verde); padding: 14px 18px;
+}
+.dp-num { font-size: 26px; font-weight: 900; color: var(--verde); font-family: 'Courier New', monospace; flex-shrink: 0; line-height: 1; }
+.dp-title { font-size: 16px; font-weight: 700; color: var(--branco); margin-bottom: 3px; }
+.dp-desc  { font-size: 13px; color: var(--cinza); line-height: 1.45; }
+.dp-desc code {
+  font-family: 'Courier New', monospace; font-size: 12px;
+  background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.1);
+  padding: 1px 7px; color: var(--verde);
+}
+
+/* PROMPT BOX */
+.prompt-box {
+  background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.08);
+  border-left: 4px solid #D4A574;
+  padding: 20px 26px; width: 100%; margin-top: 14px; position: relative;
+}
+.prompt-box::before {
+  content: 'PROMPT PARA O CLAUDE';
+  font-size: 10px; font-weight: 700; letter-spacing: 3px; color: #D4A574;
+  position: absolute; top: -9px; left: 16px; background: var(--navy); padding: 0 8px;
+}
+.prompt-box p { font-family: 'Courier New', monospace; font-size: 15px; color: var(--branco); line-height: 1.75; }
+.ph { color: var(--amarelo); }
+
+/* RESULTADO CARD */
+.resultado {
+  background: rgba(63,255,168,.05); border: 1px solid rgba(63,255,168,.2);
+  padding: 20px 26px; width: 100%; margin-top: 14px; position: relative;
+}
+.resultado::before {
+  content: 'RESULTADO ESPERADO';
+  font-size: 10px; font-weight: 700; letter-spacing: 3px; color: var(--verde);
+  position: absolute; top: -9px; left: 16px; background: var(--navy); padding: 0 8px;
+}
+.resultado ul { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; }
+.resultado ul li { font-size: 16px; color: var(--cinza); padding: 5px 0; display: flex; align-items: flex-start; gap: 8px; border-bottom: 1px solid rgba(255,255,255,.04); }
+.resultado ul li::before { content: '✓'; color: var(--verde); flex-shrink: 0; }
+.resultado ul li:last-child, .resultado ul li:nth-last-child(2) { border-bottom: none; }
+
+/* SLIDE TÍTULO */
+.s-titulo { justify-content: center !important; }
+.hero { font-size: 105px; font-weight: 900; line-height: .9; color: var(--branco); text-transform: uppercase; }
+.hero .box { background: var(--st); color: white; padding: 2px 14px; display: inline; }
+.sub { font-size: 19px; color: var(--cinza); margin-top: 14px; max-width: 650px; line-height: 1.5; }
+
+/* SLIDE FINAL */
+.s-final { align-items: center !important; text-align: center !important; }
+
+/* NAV */
+#nav {
+  position: fixed; bottom: 0; left: 0; right: 0; height: 48px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; background: rgba(4,16,31,.99);
+  border-top: 1px solid rgba(255,255,255,.07); z-index: 999;
+}
+#nav button {
+  font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--st); background: none; border: 1px solid var(--st);
+  padding: 7px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+#nav button:active { background: var(--st); color: white; }
+#nav button:disabled { opacity: .2; pointer-events: none; }
+#cnt { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--cinza); }
+#prog { position: fixed; bottom: 48px; left: 0; height: 2px; background: var(--st); z-index: 998; transition: width .3s; }
+</style>
+</head>
+<body>
+
+<svg style="display:none">
+  <defs>
+    <symbol id="st-ico" viewBox="0 0 24 24">
+      <path fill="#FF4B4B" d="M12.005.006C5.373.006 0 5.37 0 11.991c0 3.677 1.665 6.97 4.29 9.187L12 16.5l7.71 4.678A11.947 11.947 0 0 0 24 11.99C23.994 5.371 18.626.006 12.005.006zM5.07 19.109l6.93-4.211 6.93 4.211L12 23.32 5.07 19.11zm-.74-.9L12 4.92l7.67 13.289L12 22.42 4.33 18.21z"/>
+    </symbol>
+    <symbol id="gh" viewBox="0 0 24 24">
+      <path fill="#e0e0e0" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+    </symbol>
+    <symbol id="cl" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="4" fill="#1c1c1c"/>
+      <path fill="#D4A574" d="M13.827 5.53 20.974 20h-3.19l-1.531-3.48H9.077L7.545 20H4.355L11.5 5.53h2.327zm-1.163 2.786-2.474 5.633h4.948l-2.474-5.633z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div id="stage"><div id="deck">
+
+<!-- 1: TÍTULO -->
+<section class="slide s-titulo ativo">
+  <div class="tag">Aula 3 — Streamlit</div>
+  <div class="hero">DO<br><span class="box">GITHUB</span><br>PARA A WEB</div>
+  <div class="sub">Como o Streamlit funciona, quais são seus componentes, e como transformar nossa função Python em uma ferramenta web rodando ao vivo — sem HTML, sem CSS, sem servidor.</div>
+</section>
+
+<!-- 2: O QUE É STREAMLIT -->
+<section class="slide">
+  <span class="bgn">ST</span>
+  <div class="tag">O que é</div>
+  <h2>Streamlit é<br><span class="ac">Python que vira web.</span></h2>
+  <div class="sep"></div>
+  <p>Você escreve Python puro. O Streamlit converte automaticamente em uma página web com botões, campos, gráficos e tabelas.</p>
+  <p style="margin-top:12px"><strong>Sem HTML. Sem CSS. Sem JavaScript. Sem servidor configurado.</strong></p>
+  <div style="margin-top:20px;display:flex;gap:20px;width:100%">
+    <div style="flex:1;background:rgba(255,75,75,.08);border:1px solid rgba(255,75,75,.2);border-top:3px solid var(--st);padding:18px 20px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:3px;color:var(--st);margin-bottom:8px">ANTES — PARA TER UMA WEB APP</div>
+      <ul>
+        <li style="font-size:15px;color:var(--cinza);padding:4px 0">✗ Aprender HTML + CSS + JavaScript</li>
+        <li style="font-size:15px;color:var(--cinza);padding:4px 0">✗ Configurar servidor Flask ou FastAPI</li>
+        <li style="font-size:15px;color:var(--cinza);padding:4px 0">✗ Deploy manual em servidor pago</li>
+        <li style="font-size:15px;color:var(--cinza);padding:4px 0">✗ Semanas de trabalho</li>
+      </ul>
+    </div>
+    <div style="flex:1;background:rgba(63,255,168,.05);border:1px solid rgba(63,255,168,.2);border-top:3px solid var(--verde);padding:18px 20px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:3px;color:var(--verde);margin-bottom:8px">AGORA — COM STREAMLIT</div>
+      <ul>
+        <li style="font-size:15px;color:var(--branco);padding:4px 0">✓ Só Python — linguagem que você já usa</li>
+        <li style="font-size:15px;color:var(--branco);padding:4px 0">✓ Um arquivo .py → app completo</li>
+        <li style="font-size:15px;color:var(--branco);padding:4px 0">✓ Deploy gratuito via GitHub</li>
+        <li style="font-size:15px;color:var(--branco);padding:4px 0">✓ Minutos, não semanas</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 3: COMO FUNCIONA -->
+<section class="slide">
+  <div class="tag">Como funciona</div>
+  <h2>O modelo de<br><span class="ac">execução.</span></h2>
+  <div class="sep"></div>
+  <p>A regra mais importante do Streamlit — <strong>e a que mais confunde iniciantes:</strong></p>
+  <p style="margin-top:10px;font-size:18px;color:var(--amarelo);font-weight:700">Toda vez que o usuário interage, o script inteiro roda de novo do início.</p>
+  <div class="fluxo" style="margin-top:20px">
+    <div class="fluxo-item">
+      <div class="fi-ico">👆</div>
+      <div class="fi-nome">Usuário interage</div>
+      <div class="fi-desc">Clica num botão, move um slider, digita um valor</div>
+    </div>
+    <div class="fluxo-seta">→</div>
+    <div class="fluxo-item">
+      <div class="fi-ico">🔄</div>
+      <div class="fi-nome">Script roda do início</div>
+      <div class="fi-desc">Python executa do topo ao fundo novamente</div>
+    </div>
+    <div class="fluxo-seta">→</div>
+    <div class="fluxo-item">
+      <div class="fi-ico">🖥️</div>
+      <div class="fi-nome">Tela atualiza</div>
+      <div class="fi-desc">Resultado novo aparece instantaneamente</div>
+    </div>
+    <div class="fluxo-seta">→</div>
+    <div class="fluxo-item" style="border-top-color:var(--verde)">
+      <div class="fi-ico">✓</div>
+      <div class="fi-nome">Sem recarregar</div>
+      <div class="fi-desc">O browser não pisca. É reativo e rápido.</div>
+    </div>
+  </div>
+  <p style="margin-top:16px;font-size:15px;color:var(--cinza)"><strong style="color:var(--branco)">Consequência prática:</strong> variáveis não persistem entre interações. Para guardar estado, usa-se <code style="font-family:'Courier New';color:var(--verde);font-size:14px">st.session_state</code>.</p>
+</section>
+
+<!-- 4: COMPONENTES DE ENTRADA -->
+<section class="slide">
+  <div class="tag">Componentes — Parte 1</div>
+  <h2>Entrada de<br><span class="ac">dados.</span></h2>
+  <div class="comp-grid">
+    <div class="comp-card">
+      <div class="cc-cat">Número</div>
+      <div class="cc-nome">st.number_input()</div>
+      <div class="cc-desc">Campo numérico com min, max e step. Ideal para área, volume, custo.</div>
+    </div>
+    <div class="comp-card">
+      <div class="cc-cat">Texto</div>
+      <div class="cc-nome">st.text_input()</div>
+      <div class="cc-desc">Campo de texto livre. Nome do engenheiro, descrição, obra.</div>
+    </div>
+    <div class="comp-card">
+      <div class="cc-cat">Seleção</div>
+      <div class="cc-nome">st.selectbox()</div>
+      <div class="cc-desc">Menu dropdown. Tipo de solo, equipamento, padrão construtivo.</div>
+    </div>
+    <div class="comp-card">
+      <div class="cc-cat">Múltipla</div>
+      <div class="cc-nome">st.multiselect()</div>
+      <div class="cc-desc">Seleção de múltiplos itens. Serviços de uma obra, por exemplo.</div>
+    </div>
+    <div class="comp-card">
+      <div class="cc-cat">Slider</div>
+      <div class="cc-nome">st.slider()</div>
+      <div class="cc-desc">Barra deslizante. Percentual de BDI, fator de correção.</div>
+    </div>
+    <div class="comp-card">
+      <div class="cc-cat">Botão</div>
+      <div class="cc-nome">st.button()</div>
+      <div class="cc-desc">Dispara ação. Calcular, gerar relatório, limpar campos.</div>
+    </div>
+    <div class="comp-card">
+      <div class="cc-cat">Chave</div>
+      <div class="cc-nome">st.toggle()</div>
+      <div class="cc-desc">Liga/desliga. Incluir BDI, mostrar detalhes, modo avançado.</div>
+    </div>
+    <div class="comp-card">
+      <div class="cc-cat">Upload</div>
+      <div class="cc-nome">st.file_uploader()</div>
+      <div class="cc-desc">Carrega arquivo. CSV de preços, PDF de sondagem, planilha.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 5: COMPONENTES DE SAÍDA -->
+<section class="slide">
+  <div class="tag v">Componentes — Parte 2</div>
+  <h2>Saída e<br><span class="av">visualização.</span></h2>
+  <div class="comp-grid">
+    <div class="comp-card v">
+      <div class="cc-cat">Texto</div>
+      <div class="cc-nome">st.write()</div>
+      <div class="cc-desc">Exibe qualquer coisa: texto, número, DataFrame, gráfico.</div>
+    </div>
+    <div class="comp-card v">
+      <div class="cc-cat">Métrica</div>
+      <div class="cc-nome">st.metric()</div>
+      <div class="cc-desc">Número em destaque com delta. R$ 124.500 ↑ 12%. Perfeito para KPIs de obra.</div>
+    </div>
+    <div class="comp-card v">
+      <div class="cc-cat">Tabela</div>
+      <div class="cc-nome">st.dataframe()</div>
+      <div class="cc-desc">Exibe DataFrame Pandas interativo com filtro e ordenação.</div>
+    </div>
+    <div class="comp-card v">
+      <div class="cc-cat">Gráfico</div>
+      <div class="cc-nome">st.plotly_chart()</div>
+      <div class="cc-desc">Gráficos Plotly interativos. Curva S, histograma, dispersão.</div>
+    </div>
+    <div class="comp-card v">
+      <div class="cc-cat">Sucesso</div>
+      <div class="cc-nome">st.success()</div>
+      <div class="cc-desc">Caixa verde de confirmação. "Cálculo concluído com sucesso."</div>
+    </div>
+    <div class="comp-card v">
+      <div class="cc-cat">Alerta</div>
+      <div class="cc-nome">st.warning()</div>
+      <div class="cc-desc">Caixa amarela de atenção. "Volume acima do esperado para o solo."</div>
+    </div>
+    <div class="comp-card v">
+      <div class="cc-cat">Download</div>
+      <div class="cc-nome">st.download_button()</div>
+      <div class="cc-desc">Exporta resultado em CSV, Excel ou PDF direto do browser.</div>
+    </div>
+    <div class="comp-card v">
+      <div class="cc-cat">Layout</div>
+      <div class="cc-nome">st.columns()</div>
+      <div class="cc-desc">Divide a tela em colunas. Inputs à esquerda, resultado à direita.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 6: COMPONENTES DE ESTRUTURA -->
+<section class="slide">
+  <div class="tag a">Componentes — Parte 3</div>
+  <h2>Estrutura e<br><span class="aa">navegação.</span></h2>
+  <div class="comp-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="comp-card a">
+      <div class="cc-cat">Abas</div>
+      <div class="cc-nome">st.tabs()</div>
+      <div class="cc-desc">Divide em abas. Entrada / Resultado / Sobre. Organiza app complexo.</div>
+    </div>
+    <div class="comp-card a">
+      <div class="cc-cat">Lateral</div>
+      <div class="cc-nome">st.sidebar</div>
+      <div class="cc-desc">Painel lateral fixo. Configurações, filtros globais, parâmetros.</div>
+    </div>
+    <div class="comp-card a">
+      <div class="cc-cat">Expansor</div>
+      <div class="cc-nome">st.expander()</div>
+      <div class="cc-desc">Seção recolhível. Mostrar memória de cálculo, detalhes técnicos.</div>
+    </div>
+    <div class="comp-card a">
+      <div class="cc-cat">Container</div>
+      <div class="cc-nome">st.container()</div>
+      <div class="cc-desc">Agrupa elementos. Controla onde cada bloco aparece na tela.</div>
+    </div>
+    <div class="comp-card a">
+      <div class="cc-cat">Cabeçalho</div>
+      <div class="cc-nome">st.title() / st.header()</div>
+      <div class="cc-desc">Títulos hierárquicos. Nome do app, seção, subseção.</div>
+    </div>
+    <div class="comp-card a">
+      <div class="cc-cat">Divisor</div>
+      <div class="cc-nome">st.divider()</div>
+      <div class="cc-desc">Linha horizontal. Separa inputs de outputs visualmente.</div>
+    </div>
+    <div class="comp-card a">
+      <div class="cc-cat">Spinner</div>
+      <div class="cc-nome">st.spinner()</div>
+      <div class="cc-desc">Loading animado. Enquanto o cálculo pesado roda.</div>
+    </div>
+    <div class="comp-card a">
+      <div class="cc-cat">Multipage</div>
+      <div class="cc-nome">pages/</div>
+      <div class="cc-desc">Múltiplas páginas. Cada .py na pasta pages vira uma aba no menu lateral.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 7: ESTRUTURA MÍNIMA -->
+<section class="slide">
+  <div class="tag">Estrutura mínima</div>
+  <h2>O esqueleto de<br><span class="ac">todo app.</span></h2>
+<pre>
+<span class="kw">import</span> streamlit <span class="kw">as</span> st
+
+<span class="cm"># 1. TÍTULO DO APP</span>
+st.title(<span class="st-str">"Calculadora de Escavação"</span>)
+
+<span class="cm"># 2. ENTRADAS DO USUÁRIO</span>
+volume   = st.number_input(<span class="st-str">"Volume (m³)"</span>, min_value=<span class="nb">0.0</span>)
+tipo     = st.selectbox(<span class="st-str">"Tipo de solo"</span>, [<span class="st-str">"argiloso"</span>, <span class="st-str">"rochoso"</span>])
+equip    = st.selectbox(<span class="st-str">"Equipamento"</span>, [<span class="st-str">"escavadeira_20t"</span>, <span class="st-str">"retro"</span>])
+
+<span class="cm"># 3. LÓGICA PYTHON (sua função de engenharia)</span>
+<span class="kw">if</span> st.button(<span class="st-str">"Calcular"</span>):
+    horas = <span class="fn">calcular_escavacao</span>(volume, tipo, equip)
+    st.metric(<span class="st-str">"Horas estimadas"</span>, <span class="st-str">f"{horas:.1f} h"</span>)
+    st.success(<span class="st-str">"Cálculo concluído."</span>)
+</pre>
+  <p style="margin-top:12px;font-size:15px;color:var(--cinza)">Três blocos: <strong>título → entradas → lógica + saída.</strong> Todo app de engenharia segue esse padrão.</p>
+</section>
+
+<!-- 8: NOSSA FUNÇÃO NO GITHUB -->
+<section class="slide">
+  <span class="bgn">→</span>
+  <div class="tag gh">Nosso projeto</div>
+  <h2>A função que<br><span style="color:#e0e0e0">já existe.</span></h2>
+  <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-left:3px solid #e0e0e0;padding:18px 22px;margin-top:14px;width:100%">
+    <div style="font-size:10px;font-weight:700;letter-spacing:3px;color:#e0e0e0;margin-bottom:8px">
+      <svg width="14" height="14" style="vertical-align:middle;margin-right:6px"><use href="#gh"/></svg>
+      github.com/CAIOZANETTI/abra_caixa_preta
+    </div>
+    <pre style="margin-top:0;font-size:14px">
+<span class="cm"># aula02_hello_engenharia.py — já no repositório</span>
+
+<span class="kw">def</span> <span class="fn">calcular_escavacao</span>(volume_m3, tipo_solo, equipamento):
+    produtividade = {
+        <span class="st-str">"argiloso"</span>: {<span class="st-str">"escavadeira_20t"</span>: <span class="nb">45</span>, <span class="st-str">"retro"</span>: <span class="nb">18</span>},
+        <span class="st-str">"rochoso"</span>:  {<span class="st-str">"escavadeira_20t"</span>: <span class="nb">12</span>, <span class="st-str">"retro"</span>:  <span class="nb">5</span>},
+    }
+    horas = volume_m3 / produtividade[tipo_solo][equipamento]
+    <span class="kw">return</span> round(horas, <span class="nb">2</span>)
+</pre>
+  </div>
+  <p style="margin-top:14px;font-size:17px">Agora vamos pedir ao Claude para <strong>transformar essa função em um app Streamlit</strong> completo — e publicar na web em minutos.</p>
+</section>
+
+<!-- 9: PROMPT PARA O CLAUDE -->
+<section class="slide">
+  <div class="tag cl">Prática — Claude</div>
+  <h2>Peça o app<br><span class="acl">para o Claude.</span></h2>
+  <div class="prompt-box">
+    <p>
+      Tenho essa função Python no meu repositório:<br>
+      <span class="ph">github.com/CAIOZANETTI/abra_caixa_preta</span><br><br>
+      Crie um arquivo chamado <span class="ph">app_escavacao.py</span> usando Streamlit.<br>
+      O app deve:<br>
+      — Ter título e descrição clara no topo<br>
+      — Ter inputs para: volume m³, tipo de solo, equipamento<br>
+      — Usar st.columns() para separar inputs do resultado<br>
+      — Mostrar horas em st.metric() e custo estimado (R$ 280/h)<br>
+      — Mostrar st.success() com a memória de cálculo<br>
+      — Incluir st.sidebar com dados do engenheiro<br>
+      Comentários em português. Funções com nomes em português.
+    </p>
+  </div>
+  <p style="margin-top:12px;font-size:16px;color:var(--amarelo);font-weight:700">→ Claude vai gerar o arquivo completo. Você copia, salva, e roda.</p>
+</section>
+
+<!-- 10: COMO RODAR LOCAL -->
+<section class="slide">
+  <span class="bgn">▶</span>
+  <div class="tag v">Rodar local primeiro</div>
+  <h2>Testa na sua<br><span class="av">máquina.</span></h2>
+  <div class="deploy-steps">
+    <div class="dp-step">
+      <div class="dp-num">01</div>
+      <div>
+        <div class="dp-title">Instale o Streamlit (uma vez só)</div>
+        <div class="dp-desc"><code>pip install streamlit</code> — instala globalmente. Pronto, nunca mais precisa fazer isso.</div>
+      </div>
+    </div>
+    <div class="dp-step">
+      <div class="dp-num">02</div>
+      <div>
+        <div class="dp-title">Salve o arquivo gerado pelo Claude</div>
+        <div class="dp-desc">Coloque <code>app_escavacao.py</code> na pasta do repositório clonado localmente.</div>
+      </div>
+    </div>
+    <div class="dp-step">
+      <div class="dp-num">03</div>
+      <div>
+        <div class="dp-title">Rode no terminal</div>
+        <div class="dp-desc"><code>streamlit run app_escavacao.py</code> — o browser abre sozinho em <code>localhost:8501</code></div>
+      </div>
+    </div>
+    <div class="dp-step">
+      <div class="dp-num">04</div>
+      <div>
+        <div class="dp-title">Audite o resultado</div>
+        <div class="dp-desc">Teste com valores que você já conhece. Compare com o cálculo manual. <strong>Engenheiro audita, não confia.</strong></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 11: DEPLOY NA WEB -->
+<section class="slide">
+  <span class="bgn">🌐</span>
+  <div class="tag v">Deploy gratuito</div>
+  <h2>Do local para<br><span class="av">a web.</span></h2>
+  <div class="deploy-steps">
+    <div class="dp-step">
+      <div class="dp-num">01</div>
+      <div>
+        <div class="dp-title">Commit e push para o GitHub</div>
+        <div class="dp-desc"><code>git add app_escavacao.py</code> → <code>git commit -m "app streamlit escavacao"</code> → <code>git push</code></div>
+      </div>
+    </div>
+    <div class="dp-step">
+      <div class="dp-num">02</div>
+      <div>
+        <div class="dp-title">Acesse share.streamlit.io</div>
+        <div class="dp-desc">Faça login com sua conta GitHub. Clique em <strong>New app</strong>.</div>
+      </div>
+    </div>
+    <div class="dp-step">
+      <div class="dp-num">03</div>
+      <div>
+        <div class="dp-title">Selecione o repositório e o arquivo</div>
+        <div class="dp-desc">Repositório: <code>abra_caixa_preta</code> — Arquivo: <code>app_escavacao.py</code> — Branch: <code>main</code></div>
+      </div>
+    </div>
+    <div class="dp-step">
+      <div class="dp-num">04</div>
+      <div>
+        <div class="dp-title">Clique em Deploy — URL pública gerada</div>
+        <div class="dp-desc"><code>caiozanetti.streamlit.app/app_escavacao</code> — qualquer pessoa no mundo acessa. <strong>Grátis.</strong></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 12: RESULTADO ESPERADO -->
+<section class="slide">
+  <div class="tag v">O que você terá</div>
+  <h2>Uma ferramenta<br><span class="av">publicada.</span></h2>
+  <div class="resultado">
+    <ul>
+      <li>App rodando na web com <strong>URL pública</strong></li>
+      <li>Inputs para volume, solo e equipamento</li>
+      <li>Resultado em <strong>st.metric()</strong> com horas e custo</li>
+      <li>Sidebar com dados do engenheiro</li>
+      <li>Memória de cálculo visível em <strong>st.success()</strong></li>
+      <li>Código no GitHub — <strong>auditável, versionado</strong></li>
+      <li>Deploy automático a cada novo commit</li>
+      <li>Funciona no <strong>celular e no desktop</strong></li>
+    </ul>
+  </div>
+  <p style="margin-top:16px;font-size:17px">Isso é o que você vai mostrar no LinkedIn.<br>
+  <strong style="color:var(--verde)">Do prompt ao deploy em menos de 20 minutos.</strong></p>
+</section>
+
+<!-- 13: FINAL -->
+<section class="slide s-final">
+  <div class="tag" style="justify-content:center;margin-bottom:18px">Conclusão</div>
+  <h2 style="text-align:center">Python vira web.<br><span class="ac">Função vira ferramenta.</span><br>GitHub vira <span class="av">portfólio.</span></h2>
+  <div style="width:56px;height:4px;background:var(--st);margin:18px auto"></div>
+  <p style="text-align:center;margin:0 auto;max-width:720px">
+    Você saiu de uma função no terminal para uma ferramenta web publicada.<br>
+    Todo app que você vai construir nesse curso segue esse mesmo fluxo.<br>
+    <strong>Próxima aula → Tipos de dados: .md .csv .json .py</strong>
+  </p>
+</section>
+
+</div></div>
+
+<div id="prog"></div>
+<div id="nav">
+  <button id="bp" onclick="go(-1)" disabled>← Anterior</button>
+  <span id="cnt">1 / 13</span>
+  <button id="bn" onclick="go(1)">Próximo →</button>
+</div>
+
+<script>
+var deck = document.getElementById('deck');
+var stage = document.getElementById('stage');
+var slides = document.querySelectorAll('.slide');
+var W = 1280, H = 720, cur = 0;
+
+function escalar() {
+  var s = Math.min(stage.clientWidth/W, stage.clientHeight/H);
+  deck.style.transform = 'scale('+s+')';
+  deck.style.left = ((stage.clientWidth  - W*s)/2)+'px';
+  deck.style.top  = ((stage.clientHeight - H*s)/2)+'px';
+}
+
+function mostrar(n) {
+  slides[cur].classList.remove('ativo');
+  cur = n;
+  slides[cur].classList.add('ativo');
+  document.getElementById('cnt').textContent = (cur+1)+' / '+slides.length;
+  document.getElementById('bp').disabled = cur===0;
+  document.getElementById('bn').disabled = cur===slides.length-1;
+  document.getElementById('prog').style.width = ((cur+1)/slides.length*100)+'%';
+}
+
+function go(d) { var n=cur+d; if(n>=0&&n<slides.length) mostrar(n); }
+
+window.addEventListener('resize', escalar);
+escalar(); mostrar(0);
+
+document.addEventListener('keydown', function(e){
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') go(1);
+  if(e.key==='ArrowLeft' ||e.key==='ArrowUp')   go(-1);
+});
+var tx=0;
+document.addEventListener('touchstart',function(e){tx=e.touches[0].clientX;},{passive:true});
+document.addEventListener('touchend',function(e){
+  var dx=tx-e.changedTouches[0].clientX;
+  if(Math.abs(dx)>40) go(dx>0?1:-1);
+},{passive:true});
+</script>
+</body>
+</html>

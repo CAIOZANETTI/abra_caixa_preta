@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Caixa Preta — Manifesto</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --navy:    #0B1D35;
+  --laranja: #FF6B35;
+  --amarelo: #F5C842;
+  --branco:  #EEF2FF;
+  --cinza:   #7B93B8;
+  --verde:   #3FFFA8;
+}
+html, body {
+  width: 100vw; height: 100vh;
+  background: #04101f;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, Arial, sans-serif;
+}
+
+/* STAGE: área acima da nav */
+#stage {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  bottom: 48px;          /* altura da nav */
+  overflow: hidden;
+  background: #04101f;
+}
+
+/* DECK: fixo 1280×720, escalado por JS */
+#deck {
+  position: absolute;
+  width: 1280px;
+  height: 720px;
+  transform-origin: top left;  /* escala a partir do canto superior esquerdo */
+  /* left e top definidos pelo JS */
+}
+
+/* SLIDE */
+.slide {
+  position: absolute;
+  inset: 0;
+  width: 1280px;
+  height: 720px;
+  background:
+    linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px),
+    var(--navy);
+  background-size: 64px 64px, 64px 64px, auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 60px 90px 70px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s ease;
+}
+.slide::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--laranja), var(--amarelo) 50%, transparent);
+}
+.slide.ativo { opacity: 1; pointer-events: all; }
+
+/* TIPOGRAFIA */
+.tag {
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 4px; text-transform: uppercase;
+  color: var(--laranja);
+  margin-bottom: 18px;
+  display: flex; align-items: center; gap: 10px;
+}
+.tag::before { content: ''; width: 22px; height: 2px; background: currentColor; display: block; }
+.tag.v { color: var(--verde); }
+.tag.a { color: var(--amarelo); }
+
+h1 { font-size: 110px; font-weight: 900; line-height: .9; color: var(--branco); text-transform: uppercase; margin-bottom: 12px; }
+h2 { font-size: 66px; font-weight: 900; line-height: .94; color: var(--branco); text-transform: uppercase; margin-bottom: 14px; }
+p  { font-size: 22px; line-height: 1.55; color: var(--cinza); }
+strong { color: var(--branco); }
+ul { list-style: none; }
+
+.sep { width: 54px; height: 4px; background: var(--laranja); margin: 16px 0; display: block; }
+.sep.v { background: var(--verde); }
+.sep.a { background: var(--amarelo); }
+
+.ac { color: var(--laranja); }
+.av { color: var(--verde); }
+.aa { color: var(--amarelo); }
+
+.bgn {
+  font-size: 280px; font-weight: 900;
+  color: rgba(255,255,255,.022);
+  position: absolute; right: 10px; bottom: -50px;
+  line-height: 1; user-select: none; pointer-events: none;
+  text-transform: uppercase;
+}
+
+/* GRID 2×2 */
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; width: 100%; margin-top: 18px; }
+.card {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-top: 3px solid var(--laranja);
+  padding: 18px 22px;
+}
+.card.v { border-top-color: var(--verde); }
+.card.a { border-top-color: var(--amarelo); }
+.card .lbl {
+  font-size: 10px; font-weight: 700; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--laranja);
+  margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+}
+.card.v .lbl { color: var(--verde); }
+.card.a .lbl { color: var(--amarelo); }
+.card p { font-size: 17px; }
+
+/* DOIS LADOS */
+.dois { display: flex; width: 100%; border: 1px solid rgba(255,255,255,.07); margin-top: 18px; }
+.lado { flex: 1; padding: 22px 26px; }
+.lado.e { background: rgba(255,255,255,.02); border-right: 1px solid rgba(255,255,255,.07); }
+.lado.d { background: rgba(63,255,168,.04); }
+.lado .lt { font-size: 10px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 12px; color: #3a5070; }
+.lado.d .lt { color: var(--verde); }
+.lado ul li { font-size: 18px; color: var(--cinza); padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+.lado ul li:last-child { border-bottom: none; }
+.lado.d ul li { color: var(--branco); }
+
+/* ÂNCORA */
+.ancora {
+  font-size: 74px; font-weight: 900; line-height: .94;
+  color: var(--branco); text-transform: uppercase;
+  border-left: 6px solid var(--laranja); padding-left: 28px;
+}
+
+/* CÓDIGO */
+pre {
+  font-family: 'Courier New', Courier, monospace;
+  background: rgba(0,0,0,.45);
+  border: 1px solid rgba(255,255,255,.07);
+  border-left: 4px solid var(--verde);
+  padding: 20px 26px; font-size: 15px; line-height: 1.85;
+  color: var(--verde); width: 100%; margin-top: 16px; white-space: pre;
+}
+.kw { color: var(--amarelo); }
+.cm { color: #2e4560; }
+.st { color: #FF8C69; }
+.fn { color: var(--branco); }
+.nb { color: var(--cinza); }
+
+/* GITHUB */
+.gh {
+  background: rgba(63,255,168,.05);
+  border: 1px solid rgba(63,255,168,.22);
+  padding: 22px 30px; width: 100%; margin-top: 16px; position: relative;
+}
+.gh::before {
+  content: 'REPOSITÓRIO PÚBLICO';
+  font-size: 9px; font-weight: 700; letter-spacing: 3px;
+  color: var(--verde); position: absolute; top: -9px; left: 16px;
+  background: var(--navy); padding: 0 8px;
+}
+.gh .url { font-family: 'Courier New', monospace; font-size: 18px; color: var(--verde); margin-bottom: 10px; }
+.gh ul li {
+  font-size: 17px; color: var(--cinza);
+  padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05);
+  display: flex; align-items: flex-start; gap: 10px;
+}
+.gh ul li::before { content: '→'; color: var(--verde); flex-shrink: 0; }
+.gh ul li:last-child { border-bottom: none; }
+
+/* PILLS */
+.pills { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.pill {
+  font-size: 12px; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; padding: 8px 18px; border: 1px solid;
+  display: flex; align-items: center; gap: 8px;
+}
+.po { border-color: var(--laranja); color: var(--laranja); background: rgba(255,107,53,.1); }
+.pv { border-color: var(--verde);   color: var(--verde);   background: rgba(63,255,168,.07); }
+.pa { border-color: var(--amarelo); color: var(--amarelo); background: rgba(245,200,66,.07); }
+
+/* STACK */
+.stack { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px; width: 100%; margin-top: 20px; }
+.stool {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  padding: 20px 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+}
+.stool svg { width: 46px; height: 46px; }
+.stool .sn { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+.stool .sd { font-size: 12px; color: #4a6080; line-height: 1.35; }
+.stool .sf { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; border: 1px solid; padding: 3px 9px; margin-top: auto; }
+
+/* SLIDE TÍTULO */
+.s-titulo { justify-content: center !important; }
+.hero { font-size: 128px; font-weight: 900; line-height: .88; color: var(--branco); text-transform: uppercase; }
+.hero .box { background: var(--laranja); color: var(--navy); padding: 2px 14px; display: inline; }
+.sub { font-size: 20px; color: var(--cinza); margin-top: 14px; max-width: 500px; line-height: 1.5; }
+
+/* SLIDE FINAL */
+.s-final { align-items: center !important; text-align: center !important; }
+.s-final .ancora {
+  border-left: none; border-top: 4px solid var(--laranja);
+  padding: 22px 0 0; text-align: center; margin: 0 auto;
+}
+.s-final p { text-align: center; margin-top: 20px; }
+
+/* NAV */
+#nav {
+  position: fixed; bottom: 0; left: 0; right: 0; height: 48px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  background: rgba(4,16,31,.99);
+  border-top: 1px solid rgba(255,255,255,.07);
+  z-index: 999;
+}
+#nav button {
+  font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--laranja); background: none; border: 1px solid var(--laranja);
+  padding: 7px 18px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+#nav button:active { background: var(--laranja); color: var(--navy); }
+#nav button:disabled { opacity: .2; pointer-events: none; }
+#cnt { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--cinza); }
+#prog { position: fixed; bottom: 48px; left: 0; height: 2px; background: var(--laranja); z-index: 998; transition: width .3s; }
+</style>
+</head>
+<body>
+
+<svg style="display:none">
+  <defs>
+    <symbol id="py" viewBox="0 0 24 24">
+      <path fill="#3776AB" d="M11.914 0C5.82 0 6.2 2.656 6.2 2.656l.007 2.752h5.814v.826H3.912S0 5.789 0 11.969c0 6.18 3.403 5.96 3.403 5.96h2.031v-2.867s-.109-3.403 3.35-3.403h5.769s3.24.052 3.24-3.13V3.13S18.28 0 11.914 0zM8.708 1.81a1.044 1.044 0 1 1 0 2.088 1.044 1.044 0 0 1 0-2.088z"/>
+      <path fill="#FFD43B" d="M12.086 24c6.094 0 5.714-2.656 5.714-2.656l-.007-2.752h-5.814v-.826h8.109S24 18.211 24 12.031c0-6.18-3.403-5.96-3.403-5.96h-2.031v2.867s.109 3.403-3.35 3.403H9.447s-3.24-.052-3.24 3.13v5.369S5.72 24 12.086 24zm3.206-1.81a1.044 1.044 0 1 1 0-2.088 1.044 1.044 0 0 1 0 2.088z"/>
+    </symbol>
+    <symbol id="st" viewBox="0 0 24 24">
+      <path fill="#FF4B4B" d="M12.005.006C5.373.006 0 5.37 0 11.991c0 3.677 1.665 6.97 4.29 9.187L12 16.5l7.71 4.678A11.947 11.947 0 0 0 24 11.99C23.994 5.371 18.626.006 12.005.006zM5.07 19.109l6.93-4.211 6.93 4.211L12 23.32 5.07 19.11zm-.74-.9L12 4.92l7.67 13.289L12 22.42 4.33 18.21z"/>
+    </symbol>
+    <symbol id="gh" viewBox="0 0 24 24">
+      <path fill="#e0e0e0" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+    </symbol>
+    <symbol id="cl" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="4" fill="#1c1c1c"/>
+      <path fill="#D4A574" d="M13.827 5.53 20.974 20h-3.19l-1.531-3.48H9.077L7.545 20H4.355L11.5 5.53h2.327zm-1.163 2.786-2.474 5.633h4.948l-2.474-5.633z"/>
+    </symbol>
+    <symbol id="cu" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="4" fill="#0d1117"/>
+      <path fill="#00B4D8" d="M6 4l12 8-5.5 1.5L10 20 6 4z"/>
+      <path fill="#005f75" d="M10 20l2.5-6.5L18 12 10 20z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div id="stage">
+  <div id="deck">
+
+    <!-- 1: TÍTULO -->
+    <section class="slide s-titulo ativo">
+      <div class="tag">Aula 0 — Manifesto</div>
+      <div class="hero">ABRA A<br><span class="box">CAIXA</span><br>PRETA</div>
+      <div class="sub">Por que engenheiro não pode confiar em caixa preta — e como você vai mudar isso hoje.</div>
+      <div class="pills">
+        <span class="pill po"><svg width="16" height="16"><use href="#py"/></svg>Python</span>
+        <span class="pill pv"><svg width="16" height="16"><use href="#st"/></svg>Streamlit</span>
+        <span class="pill pa"><svg width="16" height="16"><use href="#gh"/></svg>GitHub</span>
+        <span class="pill po"><svg width="16" height="16"><use href="#cl"/></svg>Claude</span>
+        <span class="pill pv"><svg width="16" height="16"><use href="#cu"/></svg>Cursor</span>
+      </div>
+    </section>
+
+    <!-- 2: DIAGNÓSTICO -->
+    <section class="slide">
+      <span class="bgn">01</span>
+      <div class="tag">Diagnóstico</div>
+      <h2>Você é <span class="ac">operador.</span><br>Não é protagonista.</h2>
+      <div class="sep"></div>
+      <p>Abre o software. Clica. Recebe um número. Fecha.<br>O que aconteceu no meio? <strong>Você não sabe.</strong></p>
+      <p style="margin-top:14px">Isso tem nome: <strong style="color:var(--laranja)">caixa preta.</strong></p>
+    </section>
+
+    <!-- 3: EXEMPLOS -->
+    <section class="slide">
+      <span class="bgn">01</span>
+      <div class="tag">A caixa preta está em todo lugar</div>
+      <h2>Você já <span class="ac">usou</span> todos esses.</h2>
+      <div class="dois">
+        <div class="lado e">
+          <div class="lt">Software que você opera</div>
+          <ul>
+            <li>Software de orçamento fechado</li>
+            <li>ERP de obra proprietário</li>
+            <li>CAD estrutural licenciado</li>
+            <li>Planilha do colega sem fórmula</li>
+            <li>ChatGPT copiado do LinkedIn</li>
+          </ul>
+        </div>
+        <div class="lado d">
+          <div class="lt">O que você realmente sabe</div>
+          <ul>
+            <li>O que entra ✓</li>
+            <li>O que sai ✓</li>
+            <li style="color:#2a4060">O que acontece no meio?</li>
+            <li style="color:#1a2a40">...</li>
+            <li style="color:#10192a">...</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4: O VENENO -->
+    <section class="slide">
+      <span class="bgn">02</span>
+      <div class="tag">O veneno</div>
+      <h2>O mercado quer que<br>você <span class="ac">consuma.</span></h2>
+      <p>Sem pensar. Sem refletir. Sem questionar.</p>
+      <div class="g2">
+        <div class="card"><div class="lbl">01</div><p><strong>Licença anual</strong> que você não escolheu</p></div>
+        <div class="card"><div class="lbl">02</div><p><strong>Atualização</strong> que você não pediu</p></div>
+        <div class="card"><div class="lbl">03</div><p><strong>Dado</strong> que você não vê</p></div>
+        <div class="card"><div class="lbl">04</div><p><strong>Resultado</strong> que você não audita</p></div>
+      </div>
+    </section>
+
+    <!-- 5: ART -->
+    <section class="slide">
+      <span class="bgn">!</span>
+      <div class="tag">Responsabilidade técnica</div>
+      <div class="ancora">
+        Engenheiro<br>assina ART.<br>
+        <span class="ac">Não dá pra<br>confiar em<br>caixa preta.</span>
+      </div>
+    </section>
+
+    <!-- 6: VIRADA -->
+    <section class="slide">
+      <span class="bgn">03</span>
+      <div class="tag v">A virada</div>
+      <h2>E se você falasse<br><span class="av">a linguagem<br>da máquina?</span></h2>
+      <div class="sep v"></div>
+      <p>Python é o idioma da máquina que <strong>qualquer engenheiro consegue aprender.</strong></p>
+      <p style="margin-top:12px">Não é virar programador. É converter seu <strong>conhecimento técnico em função.</strong></p>
+    </section>
+
+    <!-- 7: CÓDIGO -->
+    <section class="slide">
+      <span class="bgn">03</span>
+      <div class="tag v">Seu conhecimento vira código auditável</div>
+      <h2>Sua engenharia. <span class="av">Sua função.</span></h2>
+<pre><span class="cm"># Critério técnico → código que você lê, audita e ajusta</span>
+
+<span class="kw">def</span> <span class="fn">calcular_escavacao</span>(volume_m3, tipo_solo, equipamento):
+    produtividade = {
+        <span class="st">"argiloso"</span>: {<span class="st">"escavadeira_20t"</span>: <span class="nb">45</span>, <span class="st">"retro"</span>: <span class="nb">18</span>},
+        <span class="st">"rochoso"</span>:  {<span class="st">"escavadeira_20t"</span>: <span class="nb">12</span>, <span class="st">"retro"</span>:  <span class="nb">5</span>},
+    }
+    horas = volume_m3 / produtividade[tipo_solo][equipamento]
+    <span class="kw">return</span> round(horas, <span class="nb">2</span>)
+
+<span class="cm"># Resultado auditável. Você sabe exatamente o que aconteceu.</span></pre>
+    </section>
+
+    <!-- 8: STACK -->
+    <section class="slide">
+      <span class="bgn">04</span>
+      <div class="tag a">Seu stack completo</div>
+      <h2>As ferramentas. <span class="aa">Todas abertas.</span></h2>
+      <div class="stack">
+        <div class="stool">
+          <svg width="46" height="46"><use href="#py"/></svg>
+          <div class="sn" style="color:#3776AB">Python</div>
+          <div class="sd">A linguagem da máquina</div>
+          <span class="sf" style="border-color:#3776AB;color:#3776AB">Open Source</span>
+        </div>
+        <div class="stool">
+          <svg width="46" height="46"><use href="#st"/></svg>
+          <div class="sn" style="color:#FF4B4B">Streamlit</div>
+          <div class="sd">Web sem HTML nem CSS</div>
+          <span class="sf" style="border-color:#FF4B4B;color:#FF4B4B">Gratuito</span>
+        </div>
+        <div class="stool">
+          <svg width="46" height="46"><use href="#gh"/></svg>
+          <div class="sn" style="color:#e0e0e0">GitHub</div>
+          <div class="sd">Sua nuvem pública</div>
+          <span class="sf" style="border-color:#e0e0e0;color:#e0e0e0">Gratuito</span>
+        </div>
+        <div class="stool">
+          <svg width="46" height="46"><use href="#cl"/></svg>
+          <div class="sn" style="color:#D4A574">Claude</div>
+          <div class="sd">IA que você dirige</div>
+          <span class="sf" style="border-color:#D4A574;color:#D4A574">Auditável</span>
+        </div>
+        <div class="stool">
+          <svg width="46" height="46"><use href="#cu"/></svg>
+          <div class="sn" style="color:#00B4D8">Cursor</div>
+          <div class="sd">IDE com IA integrada</div>
+          <span class="sf" style="border-color:#00B4D8;color:#00B4D8">Plano Free</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9: LIBERDADE -->
+    <section class="slide">
+      <span class="bgn">04</span>
+      <div class="tag a">A liberdade</div>
+      <h2>Usa quanto quiser.<br><span class="aa">De graça. Para sempre.</span></h2>
+      <div class="g2">
+        <div class="card a"><div class="lbl"><svg width="13" height="13"><use href="#py"/></svg>Python</div><p>Open source. <strong>Gratuito.</strong> Para sempre.</p></div>
+        <div class="card a"><div class="lbl"><svg width="13" height="13"><use href="#st"/></svg>Streamlit</div><p>Framework + deploy. <strong>Gratuito.</strong></p></div>
+        <div class="card a"><div class="lbl"><svg width="13" height="13"><use href="#gh"/></svg>GitHub</div><p>Seu código. Sua nuvem. <strong>Gratuito.</strong></p></div>
+        <div class="card a"><div class="lbl"><svg width="13" height="13"><use href="#cl"/></svg>Claude / Cursor</div><p>Menos que <strong>1 licença de CAD</strong>/mês.</p></div>
+      </div>
+    </section>
+
+    <!-- 10: GITHUB OURO -->
+    <section class="slide">
+      <span class="bgn">★</span>
+      <div class="tag v">Isso é ouro</div>
+      <h2><svg width="42" height="42" style="vertical-align:middle;margin-right:10px"><use href="#gh"/></svg>Tudo que você aprende<br><span class="av">fica público.</span></h2>
+      <div class="gh">
+        <div class="url">github.com/seu-usuario/caixa-preta</div>
+        <ul>
+          <li>Todos os <strong>códigos das aulas</strong> disponíveis para sempre</li>
+          <li>Cada aula com seu <strong>arquivo Python</strong> comentado</li>
+          <li>MVP final <strong>rodando online</strong> com seu nome</li>
+          <li>README como <strong>documentação técnica</strong> do seu trabalho</li>
+          <li>Portfólio que <strong>qualquer cliente pode ver</strong></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 11: EVOLUÇÃO -->
+    <section class="slide">
+      <span class="bgn">05</span>
+      <div class="tag v">A evolução</div>
+      <h2>Quer melhorar? <span class="av">Você ajusta.</span></h2>
+      <div class="dois">
+        <div class="lado e">
+          <div class="lt">Antes — consumidor</div>
+          <ul>
+            <li>Abre chamado no suporte</li>
+            <li>Espera próxima versão</li>
+            <li>Paga upgrade obrigatório</li>
+            <li style="color:#2a4060">Talvez resolva, talvez não</li>
+          </ul>
+        </div>
+        <div class="lado d">
+          <div class="lt">Agora — criador</div>
+          <ul>
+            <li>Você descreve o problema</li>
+            <li>IA sugere o código</li>
+            <li>Você audita e aprova</li>
+            <li><strong>Resolvido em minutos</strong></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12: GESTOR -->
+    <section class="slide">
+      <span class="bgn">06</span>
+      <div class="tag">A identidade nova</div>
+      <h2>Você virou<br><span class="ac">gestor de IA.</span></h2>
+      <div class="sep"></div>
+      <p>Não é operador de software.<br>É <strong>arquiteto do sistema.</strong></p>
+      <p style="margin-top:14px">Você manda. A IA executa.</p>
+      <p style="margin-top:12px;font-size:44px;font-weight:900;color:var(--laranja);text-transform:uppercase">Virou a mesa.</p>
+    </section>
+
+    <!-- 13: O QUE CONSTRÓI -->
+    <section class="slide">
+      <span class="bgn">→</span>
+      <div class="tag v">Nesse curso você vai construir</div>
+      <h2>Uma ferramenta <span class="av">real.</span> Com seu nome.</h2>
+      <div class="g2">
+        <div class="card v"><div class="lbl">01 — Ferramenta</div><p>App web funcional em <strong>Streamlit</strong></p></div>
+        <div class="card v"><div class="lbl">02 — Online</div><p><strong>URL pública</strong> acessível por qualquer pessoa</p></div>
+        <div class="card v"><div class="lbl">03 — GitHub</div><p>Código <strong>público e auditável</strong> com seu nome</p></div>
+        <div class="card v"><div class="lbl">04 — Uso real</div><p>Pronta para <strong>usar na obra</strong> ou mostrar ao cliente</p></div>
+      </div>
+    </section>
+
+    <!-- 14: FINAL -->
+    <section class="slide s-final">
+      <div class="tag" style="justify-content:center;margin-bottom:20px">Sua escolha</div>
+      <div class="ancora">
+        Seja <span class="av">criador.</span><br>
+        Não consumidor<br>
+        <span class="ac">de IA.</span>
+      </div>
+      <div style="width:56px;height:4px;background:var(--laranja);margin:20px auto"></div>
+      <p>Abra a caixa preta.<br>
+      <strong>Próxima aula → Streamlit: do zero ao ar em 5 minutos.</strong></p>
+    </section>
+
+  </div><!-- /deck -->
+</div><!-- /stage -->
+
+<div id="prog"></div>
+<div id="nav">
+  <button id="bp" onclick="go(-1)" disabled>← Anterior</button>
+  <span id="cnt">1 / 14</span>
+  <button id="bn" onclick="go(1)">Próximo →</button>
+</div>
+
+<script>
+const deck   = document.getElementById('deck');
+const stage  = document.getElementById('stage');
+const slides = document.querySelectorAll('.slide');
+const W = 1280, H = 720;
+let cur = 0;
+
+function escalar() {
+  const vw = stage.clientWidth;
+  const vh = stage.clientHeight;
+  const s  = Math.min(vw / W, vh / H);
+  const x  = (vw - W * s) / 2;
+  const y  = (vh - H * s) / 2;
+  deck.style.transform = 'scale(' + s + ')';
+  deck.style.left = x + 'px';
+  deck.style.top  = y + 'px';
+}
+
+function mostrar(n) {
+  slides[cur].classList.remove('ativo');
+  cur = n;
+  slides[cur].classList.add('ativo');
+  document.getElementById('cnt').textContent = (cur + 1) + ' / ' + slides.length;
+  document.getElementById('bp').disabled = cur === 0;
+  document.getElementById('bn').disabled = cur === slides.length - 1;
+  document.getElementById('prog').style.width = ((cur + 1) / slides.length * 100) + '%';
+}
+
+function go(d) {
+  const n = cur + d;
+  if (n >= 0 && n < slides.length) mostrar(n);
+}
+
+window.addEventListener('resize', escalar);
+escalar();
+mostrar(0);
+
+// Teclado
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') go(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   go(-1);
+});
+
+// Swipe
+var tx = 0;
+document.addEventListener('touchstart', function(e) { tx = e.touches[0].clientX; }, {passive:true});
+document.addEventListener('touchend',   function(e) {
+  var dx = tx - e.changedTouches[0].clientX;
+  if (Math.abs(dx) > 40) go(dx > 0 ? 1 : -1);
+}, {passive:true});
+</script>
+</body>
+</html>

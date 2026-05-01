@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Aula 2 — Tipos de IA</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --navy:    #0B1D35;
+  --laranja: #FF6B35;
+  --amarelo: #F5C842;
+  --branco:  #EEF2FF;
+  --cinza:   #7B93B8;
+  --verde:   #3FFFA8;
+  --roxo:    #A78BFA;
+}
+html, body {
+  width: 100vw; height: 100vh;
+  background: #04101f;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, Arial, sans-serif;
+}
+#stage {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 48px;
+  overflow: hidden; background: #04101f;
+}
+#deck {
+  position: absolute;
+  width: 1280px; height: 720px;
+  transform-origin: top left;
+}
+.slide {
+  position: absolute; inset: 0;
+  width: 1280px; height: 720px;
+  background:
+    linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px),
+    var(--navy);
+  background-size: 64px 64px, 64px 64px, auto;
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: flex-start;
+  padding: 56px 88px 66px;
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s ease;
+}
+.slide::before {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--laranja), var(--amarelo) 50%, transparent);
+}
+.slide.ativo { opacity: 1; pointer-events: all; }
+
+.tag {
+  font-size: 12px; font-weight: 700; letter-spacing: 4px;
+  text-transform: uppercase; color: var(--laranja);
+  margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+}
+.tag::before { content: ''; width: 22px; height: 2px; background: currentColor; display: block; }
+.tag.v { color: var(--verde); }
+.tag.a { color: var(--amarelo); }
+.tag.r { color: var(--roxo); }
+.tag.gh { color: #e0e0e0; }
+
+h1 { font-size: 108px; font-weight: 900; line-height: .9; color: var(--branco); text-transform: uppercase; margin-bottom: 12px; }
+h2 { font-size: 62px; font-weight: 900; line-height: .94; color: var(--branco); text-transform: uppercase; margin-bottom: 14px; }
+p  { font-size: 21px; line-height: 1.55; color: var(--cinza); }
+strong { color: var(--branco); }
+ul { list-style: none; }
+
+.sep { width: 54px; height: 4px; background: var(--laranja); margin: 14px 0; display: block; }
+.sep.v { background: var(--verde); }
+.sep.a { background: var(--amarelo); }
+.sep.gh { background: #e0e0e0; }
+
+.ac { color: var(--laranja); }
+.av { color: var(--verde); }
+.aa { color: var(--amarelo); }
+.ar { color: var(--roxo); }
+
+.bgn {
+  font-size: 280px; font-weight: 900;
+  color: rgba(255,255,255,.022);
+  position: absolute; right: 10px; bottom: -50px;
+  line-height: 1; user-select: none; pointer-events: none;
+  text-transform: uppercase;
+}
+
+/* TOOLS GRID 4 colunas */
+.tools-grid {
+  display: grid; grid-template-columns: repeat(4,1fr);
+  gap: 14px; width: 100%; margin-top: 18px;
+}
+.tool-card {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-top: 3px solid;
+  padding: 20px 18px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.tool-card .tc-ico { width: 38px; height: 38px; }
+.tool-card .tc-nome { font-size: 17px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+.tool-card .tc-tipo { font-size: 10px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--cinza); }
+.tool-card .tc-desc { font-size: 13px; color: var(--cinza); line-height: 1.45; }
+.tool-card .tc-link {
+  font-size: 11px; font-family: 'Courier New', monospace;
+  text-decoration: none; padding: 4px 0;
+  border-bottom: 1px dashed; display: inline-block; margin-top: auto;
+}
+
+/* DETAIL CARD */
+.detail-card {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-left: 4px solid;
+  padding: 24px 28px; width: 100%; margin-top: 16px;
+}
+.dc-row { display: flex; align-items: flex-start; gap: 24px; }
+.dc-ico { width: 52px; height: 52px; flex-shrink: 0; }
+.dc-nome { font-size: 30px; font-weight: 900; text-transform: uppercase; margin-bottom: 4px; }
+.dc-url {
+  font-family: 'Courier New', monospace; font-size: 13px;
+  margin-bottom: 12px; text-decoration: none;
+  display: inline-block; border-bottom: 1px dashed; padding-bottom: 2px;
+}
+.dc-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.dc-tag { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; border: 1px solid; padding: 3px 10px; }
+.dc-info ul { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 20px; }
+.dc-info ul li { font-size: 15px; color: var(--cinza); padding: 4px 0; display: flex; align-items: flex-start; gap: 8px; }
+.dc-info ul li::before { content: '→'; flex-shrink: 0; }
+
+/* COMPARATIVO */
+.comp-table { width: 100%; margin-top: 16px; border: 1px solid rgba(255,255,255,.07); border-collapse: collapse; }
+.comp-table th {
+  padding: 11px 14px; font-size: 11px; font-weight: 700;
+  letter-spacing: 3px; text-transform: uppercase; text-align: left;
+  background: rgba(255,255,255,.04); border-bottom: 1px solid rgba(255,255,255,.07); color: var(--cinza);
+}
+.comp-table td { padding: 11px 14px; font-size: 15px; color: var(--cinza); border-bottom: 1px solid rgba(255,255,255,.04); }
+.comp-table tr:last-child td { border-bottom: none; }
+.comp-table td:first-child { font-weight: 700; color: var(--branco); }
+.comp-table tr.dest td { background: rgba(212,165,116,.06); }
+.comp-table tr.dest td:first-child { color: #D4A574; }
+.check { color: var(--verde); } .x { color: #3a5070; } .mid { color: var(--amarelo); }
+
+/* AGENTES */
+.agentes-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; width: 100%; margin-top: 16px; }
+.agente {
+  background: rgba(212,165,116,.06); border: 1px solid rgba(212,165,116,.2);
+  border-top: 3px solid #D4A574; padding: 18px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.ag-ico { font-size: 26px; }
+.ag-nome { font-size: 15px; font-weight: 900; color: #D4A574; text-transform: uppercase; letter-spacing: 1px; }
+.ag-onde { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--cinza); font-family: 'Courier New', monospace; }
+.ag-desc { font-size: 13px; color: var(--cinza); line-height: 1.4; }
+.agente ul li { font-size: 12px; color: var(--cinza); padding: 2px 0; display: flex; gap: 6px; }
+.agente ul li::before { content: '·'; color: #D4A574; flex-shrink: 0; }
+
+/* GITHUB STEPS */
+.gh-steps { width: 100%; margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+.gh-step {
+  display: flex; align-items: flex-start; gap: 20px;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07);
+  border-left: 3px solid #e0e0e0; padding: 16px 20px;
+}
+.gh-step .step-num {
+  font-size: 28px; font-weight: 900; color: #e0e0e0;
+  font-family: 'Courier New', monospace; flex-shrink: 0; line-height: 1;
+}
+.gh-step .step-body {}
+.gh-step .step-title { font-size: 17px; font-weight: 700; color: var(--branco); margin-bottom: 4px; }
+.gh-step .step-desc { font-size: 14px; color: var(--cinza); line-height: 1.45; }
+.gh-step code {
+  font-family: 'Courier New', monospace; font-size: 13px;
+  background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.1);
+  padding: 2px 8px; color: var(--verde);
+}
+
+/* PRÁTICA FINAL */
+.pratica-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; width: 100%; margin-top: 18px; }
+.pratica-card {
+  background: rgba(212,165,116,.06); border: 1px solid rgba(212,165,116,.2);
+  padding: 22px 24px;
+}
+.pratica-card .pc-step {
+  font-size: 10px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+  color: #D4A574; margin-bottom: 8px; font-family: 'Courier New', monospace;
+}
+.pratica-card .pc-titulo { font-size: 20px; font-weight: 900; color: var(--branco); margin-bottom: 10px; }
+.pratica-card p { font-size: 15px; line-height: 1.5; }
+.pratica-card code {
+  font-family: 'Courier New', monospace; font-size: 13px;
+  background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.1);
+  padding: 3px 10px; color: var(--verde); display: block; margin-top: 8px;
+}
+
+/* PROMPT CLAUDE */
+.prompt-box {
+  background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.08);
+  border-left: 4px solid #D4A574;
+  padding: 22px 28px; width: 100%; margin-top: 16px;
+  position: relative;
+}
+.prompt-box::before {
+  content: 'PROMPT PARA O CLAUDE';
+  font-size: 10px; font-weight: 700; letter-spacing: 3px;
+  color: #D4A574; position: absolute; top: -9px; left: 16px;
+  background: var(--navy); padding: 0 8px;
+}
+.prompt-box p {
+  font-family: 'Courier New', monospace;
+  font-size: 16px; color: var(--branco); line-height: 1.7;
+}
+.prompt-box .ph { color: var(--amarelo); }
+
+/* SLIDE TÍTULO */
+.s-titulo { justify-content: center !important; }
+.hero { font-size: 108px; font-weight: 900; line-height: .9; color: var(--branco); text-transform: uppercase; }
+.hero .box { background: var(--laranja); color: var(--navy); padding: 2px 14px; display: inline; }
+.sub { font-size: 19px; color: var(--cinza); margin-top: 14px; max-width: 620px; line-height: 1.5; }
+
+/* FINAL */
+.s-final { align-items: center !important; text-align: center !important; }
+
+/* VEREDICTO */
+.veredicto {
+  background: rgba(212,165,116,.08); border: 1px solid rgba(212,165,116,.3);
+  padding: 24px 32px; width: 100%; margin-top: 18px; position: relative;
+}
+.veredicto::before {
+  content: 'NOSSA ESCOLHA';
+  font-size: 10px; font-weight: 700; letter-spacing: 3px;
+  color: #D4A574; position: absolute; top: -9px; left: 18px;
+  background: var(--navy); padding: 0 8px;
+}
+.vd-row { display: flex; align-items: center; gap: 24px; }
+.vd-txt h3 { font-size: 26px; font-weight: 900; color: #D4A574; text-transform: uppercase; margin-bottom: 8px; }
+.vd-txt p { font-size: 17px; line-height: 1.5; }
+
+/* NAV */
+#nav {
+  position: fixed; bottom: 0; left: 0; right: 0; height: 48px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; background: rgba(4,16,31,.99);
+  border-top: 1px solid rgba(255,255,255,.07); z-index: 999;
+}
+#nav button {
+  font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--laranja); background: none; border: 1px solid var(--laranja);
+  padding: 7px 18px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+#nav button:active { background: var(--laranja); color: var(--navy); }
+#nav button:disabled { opacity: .2; pointer-events: none; }
+#cnt { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--cinza); }
+#prog { position: fixed; bottom: 48px; left: 0; height: 2px; background: var(--laranja); z-index: 998; transition: width .3s; }
+</style>
+</head>
+<body>
+
+<svg style="display:none">
+  <defs>
+    <symbol id="cl" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="4" fill="#1c1c1c"/>
+      <path fill="#D4A574" d="M13.827 5.53 20.974 20h-3.19l-1.531-3.48H9.077L7.545 20H4.355L11.5 5.53h2.327zm-1.163 2.786-2.474 5.633h4.948l-2.474-5.633z"/>
+    </symbol>
+    <symbol id="cu" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="4" fill="#0d1117"/>
+      <path fill="#00B4D8" d="M6 4l12 8-5.5 1.5L10 20 6 4z"/>
+      <path fill="#005f75" d="M10 20l2.5-6.5L18 12 10 20z"/>
+    </symbol>
+    <symbol id="oa" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="12" fill="#10a37f"/>
+      <path fill="white" d="M8 7h8v2H8zm0 4h8v2H8zm0 4h5v2H8z"/>
+    </symbol>
+    <symbol id="ag" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="4" fill="#0a0a1a"/>
+      <path fill="#6C63FF" d="M4 12 L8 6 L12 12 L8 18 Z"/>
+      <path fill="#A78BFA" d="M10 12 L14 6 L18 12 L14 18 Z" opacity=".8"/>
+    </symbol>
+    <symbol id="gh" viewBox="0 0 24 24">
+      <path fill="#e0e0e0" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div id="stage"><div id="deck">
+
+<!-- 1: TÍTULO -->
+<section class="slide s-titulo ativo">
+  <div class="tag">Aula 2 — Ferramentas de IA</div>
+  <div class="hero">TIPOS DE<br><span class="box">IA</span><br>PARA CODAR</div>
+  <div class="sub">GitHub como base, Codex, Cursor, Antigravity e Claude — qual usar, quando usar, e como criar seu primeiro código na prática.</div>
+</section>
+
+<!-- 2: COMEÇAR PELO GITHUB -->
+<section class="slide">
+  <span class="bgn">00</span>
+  <div class="tag gh">Antes de tudo</div>
+  <h2>Primeiro o<br><span style="color:#e0e0e0">repositório.</span></h2>
+  <div class="sep gh"></div>
+  <p>Todo projeto começa no GitHub — não no código.<br>
+  O repositório é <strong>sua nuvem, seu portfólio e sua base.</strong><br>
+  Sem ele, o código que a IA gera não vai a lugar nenhum.</p>
+  <p style="margin-top:14px;font-size:18px;color:var(--amarelo)">
+    <strong>github.com/CAIOZANETTI/abra_caixa_preta</strong><br>
+    <span style="color:var(--cinza);font-size:16px">Esse é o repositório desta aula — público, auditável, para sempre.</span>
+  </p>
+</section>
+
+<!-- 3: CRIAR REPOSITÓRIO - PASSO A PASSO -->
+<section class="slide">
+  <div class="tag gh">Prática — GitHub</div>
+  <h2>Criar o<br><span style="color:#e0e0e0">repositório.</span></h2>
+  <div class="gh-steps">
+    <div class="gh-step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <div class="step-title">Acesse github.com/new</div>
+        <div class="step-desc">Logue na sua conta e clique em <strong>New repository</strong>. É daqui que tudo começa.</div>
+      </div>
+    </div>
+    <div class="gh-step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <div class="step-title">Nome: <code>abra_caixa_preta</code></div>
+        <div class="step-desc">Use underscore, sem espaço. Deixe <strong>Public</strong>. Esse repositório é seu portfólio — precisa ser visível.</div>
+      </div>
+    </div>
+    <div class="gh-step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <div class="step-title">Ative o README + .gitignore Python</div>
+        <div class="step-desc">README é o contrato do projeto. .gitignore Python evita subir lixo. <strong>License: sem licença por enquanto.</strong></div>
+      </div>
+    </div>
+    <div class="gh-step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <div class="step-title">Clique em Create repository</div>
+        <div class="step-desc">Pronto. Sua nuvem está no ar. URL pública gerada. <strong>Esse link vai para o aluno da Hotmart.</strong></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4: O PROBLEMA DAS IAs -->
+<section class="slide">
+  <span class="bgn">?</span>
+  <div class="tag">O problema</div>
+  <h2>Muitas opções.<br><span class="ac">Qual usar?</span></h2>
+  <div class="sep"></div>
+  <p>Todo mês surge uma nova IA para programar.<br>
+  Cada uma promete ser a melhor. <strong>Nenhuma explica quando usar qual.</strong></p>
+  <div style="margin-top:20px;width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-left:3px solid var(--laranja);padding:18px 24px;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--laranja);margin-bottom:14px">Minha trajetória pessoal — 2025</div>
+    <div style="display:flex;align-items:center;width:100%">
+      <div style="flex:1;text-align:center">
+        <div style="font-size:20px;font-weight:900;color:#00B4D8;text-transform:uppercase">Cursor</div>
+        <div style="font-size:11px;color:var(--cinza);margin-top:4px">Primeiro contato<br>IDE + IA integrada</div>
+      </div>
+      <div style="color:var(--laranja);font-size:20px;font-weight:900;padding:0 10px">→</div>
+      <div style="flex:1;text-align:center">
+        <div style="font-size:20px;font-weight:900;color:#6C63FF;text-transform:uppercase">Antigravity</div>
+        <div style="font-size:11px;color:var(--cinza);margin-top:4px">Agente autônomo<br>mais autonomia</div>
+      </div>
+      <div style="color:var(--laranja);font-size:20px;font-weight:900;padding:0 10px">→</div>
+      <div style="flex:1;text-align:center">
+        <div style="font-size:20px;font-weight:900;color:#10a37f;text-transform:uppercase">Codex</div>
+        <div style="font-size:11px;color:var(--cinza);margin-top:4px">Via API<br>mais controle</div>
+      </div>
+      <div style="color:var(--laranja);font-size:20px;font-weight:900;padding:0 10px">→</div>
+      <div style="flex:1;text-align:center;background:rgba(212,165,116,.1);border:1px solid rgba(212,165,116,.3);padding:10px 6px">
+        <div style="font-size:20px;font-weight:900;color:#D4A574;text-transform:uppercase">Claude ★</div>
+        <div style="font-size:11px;color:#D4A574;margin-top:4px">Escolha final<br>mais analítico</div>
+      </div>
+    </div>
+  </div>
+  <p style="margin-top:14px;font-size:17px;color:var(--amarelo);font-weight:700">
+    Testei todas na prática. Cada uma tem seu lugar. Vou mostrar o que aprendi.
+  </p>
+</section>
+
+<!-- 5: VISÃO GERAL -->
+<section class="slide">
+  <div class="tag">As 4 ferramentas</div>
+  <h2>O <span class="ac">mapa</span> completo.</h2>
+  <div class="tools-grid">
+    <div class="tool-card" style="border-top-color:#10a37f">
+      <svg class="tc-ico"><use href="#oa"/></svg>
+      <div class="tc-nome" style="color:#10a37f">Codex</div>
+      <div class="tc-tipo">API / OpenAI</div>
+      <div class="tc-desc">Motor por trás do GitHub Copilot. Geração via API. Mais técnico, menos conversa.</div>
+      <a class="tc-link" style="color:#10a37f;border-color:#10a37f" href="https://platform.openai.com/docs/guides/code" target="_blank">platform.openai.com</a>
+    </div>
+    <div class="tool-card" style="border-top-color:#00B4D8">
+      <svg class="tc-ico"><use href="#cu"/></svg>
+      <div class="tc-nome" style="color:#00B4D8">Cursor</div>
+      <div class="tc-tipo">IDE completa</div>
+      <div class="tc-desc">VSCode com IA integrada. Edita arquivos inteiros com contexto do projeto.</div>
+      <a class="tc-link" style="color:#00B4D8;border-color:#00B4D8" href="https://cursor.sh" target="_blank">cursor.sh</a>
+    </div>
+    <div class="tool-card" style="border-top-color:#6C63FF">
+      <svg class="tc-ico"><use href="#ag"/></svg>
+      <div class="tc-nome" style="color:#6C63FF">Antigravity</div>
+      <div class="tc-tipo">IDE / Agente</div>
+      <div class="tc-desc">Agente autônomo que navega e edita o projeto. Plano gratuito generoso.</div>
+      <a class="tc-link" style="color:#6C63FF;border-color:#6C63FF" href="https://antigravity.dev" target="_blank">antigravity.dev</a>
+    </div>
+    <div class="tool-card" style="border-top-color:#D4A574">
+      <svg class="tc-ico"><use href="#cl"/></svg>
+      <div class="tc-nome" style="color:#D4A574">Claude</div>
+      <div class="tc-tipo">Anthropic</div>
+      <div class="tc-desc">Mais analítico. Raciocina antes de codar. Melhor para lógica de engenharia.</div>
+      <a class="tc-link" style="color:#D4A574;border-color:#D4A574" href="https://claude.ai" target="_blank">claude.ai</a>
+    </div>
+  </div>
+</section>
+
+<!-- 6: CODEX -->
+<section class="slide">
+  <span class="bgn">01</span>
+  <div class="tag">Ferramenta 01</div>
+  <h2 style="color:#10a37f">Codex</h2>
+  <div class="detail-card" style="border-left-color:#10a37f">
+    <div class="dc-row">
+      <svg class="dc-ico"><use href="#oa"/></svg>
+      <div class="dc-info">
+        <div class="dc-nome" style="color:#10a37f">OpenAI Codex</div>
+        <a class="dc-url" style="color:#10a37f;border-color:#10a37f" href="https://platform.openai.com/docs/guides/code" target="_blank">platform.openai.com/docs/guides/code</a>
+        <div class="dc-tags">
+          <span class="dc-tag" style="border-color:#10a37f;color:#10a37f">Via API</span>
+          <span class="dc-tag" style="border-color:var(--cinza);color:var(--cinza)">Base do Copilot</span>
+          <span class="dc-tag" style="border-color:var(--cinza);color:var(--cinza)">Pay per use</span>
+        </div>
+        <ul>
+          <li>Motor por trás do GitHub Copilot</li>
+          <li>Acesso via API com tokens</li>
+          <li>Ótimo para autocomplete inline</li>
+          <li>Menos raciocínio, mais velocidade</li>
+          <li>Integra com qualquer editor</li>
+          <li>Ideal para snippets repetitivos</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <p style="margin-top:12px;font-size:16px"><strong style="color:#10a37f">Melhor para:</strong> autocompletar código repetitivo, boilerplate, scripts rápidos sem análise profunda.</p>
+</section>
+
+<!-- 7: CURSOR -->
+<section class="slide">
+  <span class="bgn">02</span>
+  <div class="tag">Ferramenta 02</div>
+  <h2 style="color:#00B4D8">Cursor</h2>
+  <div class="detail-card" style="border-left-color:#00B4D8">
+    <div class="dc-row">
+      <svg class="dc-ico"><use href="#cu"/></svg>
+      <div class="dc-info">
+        <div class="dc-nome" style="color:#00B4D8">Cursor IDE</div>
+        <a class="dc-url" style="color:#00B4D8;border-color:#00B4D8" href="https://cursor.sh" target="_blank">cursor.sh</a>
+        <div class="dc-tags">
+          <span class="dc-tag" style="border-color:#00B4D8;color:#00B4D8">IDE Completa</span>
+          <span class="dc-tag" style="border-color:var(--verde);color:var(--verde)">Plano Free</span>
+          <span class="dc-tag" style="border-color:var(--cinza);color:var(--cinza)">Baseado em VSCode</span>
+        </div>
+        <ul>
+          <li>VSCode com IA embutida</li>
+          <li>Vê o projeto inteiro como contexto</li>
+          <li>Edita múltiplos arquivos de uma vez</li>
+          <li>Modo Composer para refatoração</li>
+          <li>Usa Claude ou GPT por baixo</li>
+          <li>Melhor custo-benefício do mercado</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <p style="margin-top:12px;font-size:16px"><strong style="color:#00B4D8">Melhor para:</strong> projetos com vários arquivos, refatoração contínua, desenvolvimento ativo.</p>
+</section>
+
+<!-- 8: ANTIGRAVITY -->
+<section class="slide">
+  <span class="bgn">03</span>
+  <div class="tag">Ferramenta 03</div>
+  <h2 style="color:#6C63FF">Antigravity</h2>
+  <div class="detail-card" style="border-left-color:#6C63FF">
+    <div class="dc-row">
+      <svg class="dc-ico"><use href="#ag"/></svg>
+      <div class="dc-info">
+        <div class="dc-nome" style="color:#6C63FF">Antigravity</div>
+        <a class="dc-url" style="color:#6C63FF;border-color:#6C63FF" href="https://antigravity.dev" target="_blank">antigravity.dev</a>
+        <div class="dc-tags">
+          <span class="dc-tag" style="border-color:#6C63FF;color:#6C63FF">Agente autônomo</span>
+          <span class="dc-tag" style="border-color:var(--verde);color:var(--verde)">Plano Free</span>
+          <span class="dc-tag" style="border-color:var(--cinza);color:var(--cinza)">IDE própria</span>
+        </div>
+        <ul>
+          <li>Agente que navega no projeto sozinho</li>
+          <li>Executa sequência de edições em cascata</li>
+          <li>Roda comandos no terminal automaticamente</li>
+          <li>Mais autônomo que o Cursor</li>
+          <li>Plano gratuito bastante generoso</li>
+          <li>Boa opção para quem está começando</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <p style="margin-top:12px;font-size:16px"><strong style="color:#6C63FF">Melhor para:</strong> tarefas longas e repetitivas, scaffolding de projeto, estruturação inicial.</p>
+</section>
+
+<!-- 9: CLAUDE -->
+<section class="slide">
+  <span class="bgn">04</span>
+  <div class="tag r">Ferramenta 04 — Nossa escolha</div>
+  <h2 style="color:#D4A574">Claude</h2>
+  <div class="detail-card" style="border-left-color:#D4A574;background:rgba(212,165,116,.06)">
+    <div class="dc-row">
+      <svg class="dc-ico"><use href="#cl"/></svg>
+      <div class="dc-info">
+        <div class="dc-nome" style="color:#D4A574">Claude — Anthropic</div>
+        <a class="dc-url" style="color:#D4A574;border-color:#D4A574" href="https://claude.ai" target="_blank">claude.ai</a>
+        <div class="dc-tags">
+          <span class="dc-tag" style="border-color:#D4A574;color:#D4A574">Chat + API + CLI</span>
+          <span class="dc-tag" style="border-color:var(--verde);color:var(--verde)">Mais analítico</span>
+          <span class="dc-tag" style="border-color:var(--amarelo);color:var(--amarelo)">200k tokens</span>
+        </div>
+        <ul>
+          <li style="color:var(--branco)">Raciocina antes de escrever código</li>
+          <li style="color:var(--branco)">Explica cada decisão técnica</li>
+          <li style="color:var(--branco)">Contexto de 200k tokens (projetos grandes)</li>
+          <li style="color:var(--branco)">Claude Code: agente no terminal</li>
+          <li style="color:var(--branco)">Melhor para lógica de engenharia civil</li>
+          <li style="color:var(--branco)">Auditável — você entende o que fez</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10: COMPARATIVO -->
+<section class="slide">
+  <div class="tag">Comparativo direto</div>
+  <h2>Lado a <span class="ac">lado.</span></h2>
+  <table class="comp-table">
+    <thead>
+      <tr>
+        <th>Ferramenta</th>
+        <th>Interface</th>
+        <th>Raciocínio</th>
+        <th>Contexto projeto</th>
+        <th>Gratuito</th>
+        <th>Para engenheiro</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="color:#10a37f">Codex</td>
+        <td>API</td>
+        <td><span class="mid">Médio</span></td>
+        <td><span class="x">✗ Não</span></td>
+        <td><span class="x">✗ Pago</span></td>
+        <td><span class="mid">◑ Parcial</span></td>
+      </tr>
+      <tr>
+        <td style="color:#00B4D8">Cursor</td>
+        <td>IDE</td>
+        <td><span class="mid">Médio</span></td>
+        <td><span class="check">✓ Sim</span></td>
+        <td><span class="check">✓ Free</span></td>
+        <td><span class="check">✓ Bom</span></td>
+      </tr>
+      <tr>
+        <td style="color:#6C63FF">Antigravity</td>
+        <td>IDE</td>
+        <td><span class="mid">Médio</span></td>
+        <td><span class="check">✓ Sim</span></td>
+        <td><span class="check">✓ Free</span></td>
+        <td><span class="mid">◑ Parcial</span></td>
+      </tr>
+      <tr class="dest">
+        <td>Claude ★</td>
+        <td>Chat + CLI + API</td>
+        <td><span class="check">✓ Alto</span></td>
+        <td><span class="check">✓ 200k</span></td>
+        <td><span class="check">✓ Free</span></td>
+        <td><span style="color:#D4A574">★ Ideal</span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 11: AGENTES CLAUDE -->
+<section class="slide">
+  <div class="tag r">Ecossistema Claude</div>
+  <h2>O agente certo<br><span style="color:#D4A574">para cada tarefa.</span></h2>
+  <div class="agentes-grid">
+    <div class="agente">
+      <div class="ag-ico">💬</div>
+      <div class="ag-nome">Claude Chat</div>
+      <div class="ag-onde">claude.ai</div>
+      <div class="ag-desc">Análise, raciocínio e geração com contexto longo.</div>
+      <ul>
+        <li>Desenhar lógica antes de codar</li>
+        <li>Auditar código existente</li>
+        <li>Interpretar normas NBR</li>
+      </ul>
+    </div>
+    <div class="agente">
+      <div class="ag-ico">⚡</div>
+      <div class="ag-nome">Claude Code</div>
+      <div class="ag-onde">Terminal / CLI</div>
+      <div class="ag-desc">Agente autônomo no projeto via terminal.</div>
+      <ul>
+        <li>Editar múltiplos arquivos Python</li>
+        <li>Rodar testes e corrigir erros</li>
+        <li>Commitar no GitHub</li>
+      </ul>
+    </div>
+    <div class="agente">
+      <div class="ag-ico">🔌</div>
+      <div class="ag-nome">Claude API</div>
+      <div class="ag-onde">api.anthropic.com</div>
+      <div class="ag-desc">IA dentro do seu app Streamlit.</div>
+      <ul>
+        <li>Interpretar texto de obra</li>
+        <li>Gerar laudos automáticos</li>
+        <li>Sugerir composições de custo</li>
+      </ul>
+    </div>
+    <div class="agente">
+      <div class="ag-ico">🖥️</div>
+      <div class="ag-nome">Claude + Cursor</div>
+      <div class="ag-onde">cursor.sh</div>
+      <div class="ag-desc">Motor Claude dentro da IDE Cursor.</div>
+      <ul>
+        <li>Contexto do projeto inteiro</li>
+        <li>Edição com explicação técnica</li>
+        <li>Melhor dos dois mundos</li>
+      </ul>
+    </div>
+    <div class="agente">
+      <div class="ag-ico">📁</div>
+      <div class="ag-nome">Claude Projects</div>
+      <div class="ag-onde">claude.ai/projects</div>
+      <div class="ag-desc">Memória persistente entre conversas.</div>
+      <ul>
+        <li>Contexto de obra longa</li>
+        <li>Documentos técnicos fixos</li>
+        <li>Equipe compartilhando contexto</li>
+      </ul>
+    </div>
+    <div class="agente">
+      <div class="ag-ico">📱</div>
+      <div class="ag-nome">Claude Mobile</div>
+      <div class="ag-onde">App iOS / Android</div>
+      <div class="ag-desc">Consultas rápidas em obra ou reunião.</div>
+      <ul>
+        <li>Dúvida de norma em campo</li>
+        <li>Foto de planta para análise</li>
+        <li>Ditado de voz para código</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 12: PRÁTICA — APONTANDO GITHUB PARA CLAUDE -->
+<section class="slide">
+  <span class="bgn">→</span>
+  <div class="tag v">Agora na prática</div>
+  <h2>GitHub + Claude.<br><span class="av">Primeiro código.</span></h2>
+  <div class="pratica-grid">
+    <div class="pratica-card">
+      <div class="pc-step">Passo 01 — GitHub</div>
+      <div class="pc-titulo">Copie a URL do repositório</div>
+      <p>Acesse o repositório criado e copie a URL pública.<br>Ela será o contexto que você passa para o Claude.</p>
+      <code>github.com/CAIOZANETTI/abra_caixa_preta</code>
+    </div>
+    <div class="pratica-card">
+      <div class="pc-step">Passo 02 — Claude</div>
+      <div class="pc-titulo">Abra o claude.ai e cole o prompt</div>
+      <p>No Claude Chat, você vai passar o contexto do projeto e pedir o primeiro código Python que rode direto no prompt.</p>
+      <code>claude.ai → nova conversa</code>
+    </div>
+  </div>
+</section>
+
+<!-- 13: O PROMPT -->
+<section class="slide">
+  <div class="tag r">Prática — O Prompt</div>
+  <h2>Peça o primeiro<br><span style="color:#D4A574">código para o Claude.</span></h2>
+  <div class="prompt-box">
+    <p>
+      Meu repositório é <span class="ph">github.com/CAIOZANETTI/abra_caixa_preta</span><br><br>
+      Crie um arquivo Python chamado <span class="ph">aula02_hello_engenharia.py</span><br>
+      que rode no prompt sem nenhuma dependência externa.<br><br>
+      O código deve:<br>
+      — Pedir o nome do engenheiro<br>
+      — Pedir a área da obra em m²<br>
+      — Calcular um custo estimado simples (R$ 2.500/m²)<br>
+      — Mostrar o resultado formatado com separador de milhar<br><br>
+      Explique cada linha com comentário em português.
+    </p>
+  </div>
+  <p style="margin-top:14px;font-size:16px;color:var(--amarelo)">
+    <strong>Isso é o que faremos ao vivo agora →</strong> Claude gera, você copia, roda no terminal, vê funcionar.
+  </p>
+</section>
+
+<!-- 14: FINAL -->
+<section class="slide s-final">
+  <div class="tag" style="justify-content:center;margin-bottom:18px">Conclusão</div>
+  <h2 style="text-align:center">GitHub criado.<br><span style="color:#D4A574">Claude escolhido.</span><br>Primeiro código <span class="av">rodando.</span></h2>
+  <div style="width:56px;height:4px;background:var(--laranja);margin:18px auto"></div>
+  <p style="text-align:center;margin:0 auto;max-width:700px">
+    Você saiu do zero para um repositório público com código funcional.<br>
+    Isso é o que o curso inteiro vai construir — uma camada por aula.<br>
+    <strong>Próxima aula → Tipos de dados: .md .csv .json .py</strong>
+  </p>
+</section>
+
+</div></div>
+
+<div id="prog"></div>
+<div id="nav">
+  <button id="bp" onclick="go(-1)" disabled>← Anterior</button>
+  <span id="cnt">1 / 14</span>
+  <button id="bn" onclick="go(1)">Próximo →</button>
+</div>
+
+<script>
+var deck   = document.getElementById('deck');
+var stage  = document.getElementById('stage');
+var slides = document.querySelectorAll('.slide');
+var W = 1280, H = 720, cur = 0;
+
+function escalar() {
+  var s = Math.min(stage.clientWidth / W, stage.clientHeight / H);
+  deck.style.transform = 'scale(' + s + ')';
+  deck.style.left = ((stage.clientWidth  - W * s) / 2) + 'px';
+  deck.style.top  = ((stage.clientHeight - H * s) / 2) + 'px';
+}
+
+function mostrar(n) {
+  slides[cur].classList.remove('ativo');
+  cur = n;
+  slides[cur].classList.add('ativo');
+  document.getElementById('cnt').textContent = (cur+1) + ' / ' + slides.length;
+  document.getElementById('bp').disabled = cur === 0;
+  document.getElementById('bn').disabled = cur === slides.length - 1;
+  document.getElementById('prog').style.width = ((cur+1) / slides.length * 100) + '%';
+}
+
+function go(d) { var n = cur+d; if (n >= 0 && n < slides.length) mostrar(n); }
+
+window.addEventListener('resize', escalar);
+escalar();
+mostrar(0);
+
+document.addEventListener('keydown', function(e) {
+  if (e.key==='ArrowRight'||e.key==='ArrowDown') go(1);
+  if (e.key==='ArrowLeft' ||e.key==='ArrowUp')   go(-1);
+});
+var tx = 0;
+document.addEventListener('touchstart', function(e){ tx = e.touches[0].clientX; }, {passive:true});
+document.addEventListener('touchend',   function(e){
+  var dx = tx - e.changedTouches[0].clientX;
+  if (Math.abs(dx) > 40) go(dx > 0 ? 1 : -1);
+}, {passive:true});
+</script>
+</body>
+</html>
