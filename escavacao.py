@@ -6,7 +6,7 @@ Baseado em dados de fabricantes (Caterpillar, Komatsu, Volvo) e normas TCPO.
 
 # Capacidade da caçamba por classe de escavadeira (m³)
 CACAMBA_M3 = {
-    14: 0.50,
+    14: 0.55,
     20: 0.80,
     30: 1.20,
     40: 1.60,
