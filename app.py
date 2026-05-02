@@ -13,7 +13,7 @@ from plotly.subplots import make_subplots
 # ---------------------------------------------------------------------------
 # Parâmetros fixos (hardcode — V2 não pede ao usuário)
 # ---------------------------------------------------------------------------
-FCK_MPA = 30.0          # concreto C30
+FCK_MPA = 25.0          # concreto C25
 FYK_MPA = 500.0         # aço CA-50
 COB_CM = 3.0            # cobertura nominal (CAA II)
 PHI_EST_CM = 0.5        # estribo presumido Ø5,0 mm
