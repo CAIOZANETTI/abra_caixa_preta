@@ -6,6 +6,9 @@ V3: visualização 3D rotacionável com cor mapeada por |M(x)| e armadura.
 """
 
 import math
+import re
+import unicodedata
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -226,6 +229,8 @@ Por favor, audite os cálculos acima conforme NBR 6118. Verifique:
 2. Verificação de domínio está adequada?
 3. Limite de armadura mínima foi respeitado?
 4. Algum aspecto de segurança que faltou considerar?
+
+💡 Para baixar este relatório completo, acesse a aba "Baixar Relatório" do app.
 """
 
 
@@ -394,7 +399,8 @@ def _construir_apoios(L_m: float, b_cm: float):
     return dict(x=vx, y=vy, z=vz, i=i_idx, j=j_idx, k=k_idx)
 
 
-def render_3d(L, q, b, h, descricao, M_max, r):
+def construir_fig_3d(L, q, b, h, descricao, M_max, r):
+    """Monta a figura Plotly 3D da viga (sem renderizar). Reusada pela aba 5 e pelo relatório HTML."""
     nome = descricao.strip() if descricao and descricao.strip() else "(sem identificação)"
     n_barras = n_barras_armadura(r.get("As_adotado_cm2"))
     b_m = b / 100.0
@@ -467,7 +473,6 @@ def render_3d(L, q, b, h, descricao, M_max, r):
             hovertemplate="Armadura longitudinal<extra></extra>",
         ))
 
-    # Layout — câmera isométrica suave, eixos em metros, proporção real
     titulo = (f"Viga {nome} — L={L:g} m | b={b:g} cm × h={h:g} cm | "
               f"M_max={M_max:.2f} kN·m")
     fig.update_layout(
@@ -487,10 +492,13 @@ def render_3d(L, q, b, h, descricao, M_max, r):
         paper_bgcolor="white",
         legend=dict(x=0.0, y=1.0, bgcolor="rgba(255,255,255,0.7)"),
     )
+    return fig, n_barras
 
+
+def render_3d(L, q, b, h, descricao, M_max, r):
+    fig, n_barras = construir_fig_3d(L, q, b, h, descricao, M_max, r)
     st.plotly_chart(fig, use_container_width=True)
 
-    # Caixa explicativa
     info_armadura = (
         f"🟡 Linhas amarelas representam a armadura longitudinal calculada "
         f"({n_barras} barras Ø12,5 mm)"
@@ -506,6 +514,335 @@ def render_3d(L, q, b, h, descricao, M_max, r):
         "↻ Arraste para rotacionar · 🔍 Scroll para zoom · "
         "duplo-clique reseta a câmera"
     )
+
+
+# ---------------------------------------------------------------------------
+# Relatório HTML autocontido (V4)
+# ---------------------------------------------------------------------------
+TAMANHO_AVISO_MB = 10  # acima disso o app sugere Wi-Fi
+
+
+def sanitizar_nome_arquivo(s: str) -> str:
+    """Tira acentos, troca não-alfanuméricos por _, lowercase, máx. 50 chars."""
+    if not s or not s.strip():
+        return "sem_descricao"
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    s = re.sub(r"[^a-zA-Z0-9]+", "_", s).strip("_").lower()
+    return (s or "sem_descricao")[:50]
+
+
+def _escape_html(texto: str) -> str:
+    return (
+        texto.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def md_para_html(md: str) -> str:
+    """
+    Mini-parser Markdown → HTML para a memória de cálculo.
+    Suporta: # h1, ## h2, listas '- ', **bold**, parágrafos, linhas em branco.
+    Suficiente para o template controlado de montar_memoria().
+    """
+    linhas = md.splitlines()
+    saida = []
+    em_lista = False
+
+    def fechar_lista():
+        nonlocal em_lista
+        if em_lista:
+            saida.append("</ul>")
+            em_lista = False
+
+    for linha in linhas:
+        bruta = linha.rstrip()
+        if not bruta.strip():
+            fechar_lista()
+            continue
+
+        # Cabeçalhos
+        if bruta.startswith("# "):
+            fechar_lista()
+            saida.append(f"<h1>{_escape_html(bruta[2:])}</h1>")
+            continue
+        if bruta.startswith("## "):
+            fechar_lista()
+            saida.append(f"<h2>{_escape_html(bruta[3:])}</h2>")
+            continue
+
+        # Itens de lista
+        if bruta.lstrip().startswith("- "):
+            if not em_lista:
+                saida.append("<ul>")
+                em_lista = True
+            conteudo = bruta.lstrip()[2:]
+            saida.append(f"<li>{_aplicar_inline(conteudo)}</li>")
+            continue
+
+        # Parágrafo comum
+        fechar_lista()
+        saida.append(f"<p>{_aplicar_inline(bruta)}</p>")
+
+    fechar_lista()
+    return "\n".join(saida)
+
+
+def _aplicar_inline(texto: str) -> str:
+    """Aplica negrito **...** após escapar HTML."""
+    escapado = _escape_html(texto)
+    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escapado)
+
+
+_CSS_RELATORIO = """
+* { box-sizing: border-box; }
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    color: #1a1a1a; background: #f5f5f5;
+    margin: 0; padding: 0; line-height: 1.55;
+}
+.container {
+    max-width: 900px; margin: 0 auto; padding: 40px;
+    background: #ffffff;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+header { border-bottom: 4px solid #FF6B35; padding-bottom: 16px; margin-bottom: 32px; }
+header h1 { margin: 0 0 6px 0; color: #0B1D35; font-size: 26px; }
+.subtitulo { color: #777; margin: 0; font-size: 14px; }
+section { margin: 32px 0; }
+section h2 { color: #0B1D35; border-bottom: 1px solid #e5e5e5; padding-bottom: 6px; }
+section h2 + p, section > p { margin-top: 8px; }
+table.tabela-resultados, table.tabela-dados {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    font-size: 14px;
+}
+table.tabela-resultados th, table.tabela-dados th {
+    background: #f0f0f0; text-align: left; padding: 8px 10px;
+    border-bottom: 2px solid #ccc;
+}
+table.tabela-resultados td, table.tabela-dados td {
+    padding: 8px 10px; border-bottom: 1px solid #ececec;
+}
+table.tabela-resultados tr:nth-child(even),
+table.tabela-dados tr:nth-child(even) { background: #fafafa; }
+.cards-esforcos {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0;
+}
+.card-esforco {
+    background: #E8F5E9; border-left: 4px solid #2E7D32;
+    padding: 18px 20px; border-radius: 6px;
+}
+.card-esforco .rotulo { font-size: 13px; color: #2E7D32; text-transform: uppercase; letter-spacing: 0.5px; }
+.card-esforco .valor { font-size: 28px; font-weight: 700; color: #0B1D35; margin-top: 6px; }
+.dica { color: #555; font-size: 13px; font-style: italic; }
+.memoria-render h1 { font-size: 22px; color: #0B1D35; margin-top: 18px; }
+.memoria-render h2 { font-size: 17px; color: #0B1D35; border: none; margin-top: 14px; }
+.memoria-render ul { padding-left: 22px; }
+.memoria-render li { margin: 2px 0; }
+footer { margin-top: 40px; }
+.disclaimer {
+    background: #FFF8E1; border-left: 4px solid #C62828;
+    padding: 14px 16px; border-radius: 4px; font-size: 14px; color: #444;
+}
+.branding { margin-top: 12px; color: #888; font-size: 12px; text-align: center; }
+@media print {
+    body { background: #fff; }
+    .container { box-shadow: none; padding: 0; max-width: 100%; }
+    .dica { color: #000; }
+}
+@media (max-width: 640px) {
+    .container { padding: 20px; }
+    .cards-esforcos { grid-template-columns: 1fr; }
+    table.tabela-resultados, table.tabela-dados { font-size: 12px; }
+    table.tabela-resultados th, table.tabela-resultados td,
+    table.tabela-dados th, table.tabela-dados td { padding: 6px; }
+}
+"""
+
+
+def _tabela_dados_entrada(L, q, b, h, descricao) -> str:
+    nome = descricao.strip() if descricao and descricao.strip() else "—"
+    linhas = [
+        ("Identificação", _escape_html(nome)),
+        ("Vão (L)", f"{L:.2f} m"),
+        ("Carga distribuída (q)", f"{q:.2f} kN/m"),
+        ("Largura (b)", f"{b:.1f} cm"),
+        ("Altura (h)", f"{h:.1f} cm"),
+    ]
+    linhas_html = "".join(
+        f"<tr><th>{rot}</th><td>{val}</td></tr>" for rot, val in linhas
+    )
+    return f'<table class="tabela-dados"><tbody>{linhas_html}</tbody></table>'
+
+
+def _tabela_parametros() -> str:
+    linhas = [
+        ("Concreto", "C30 (fck = 30 MPa)"),
+        ("Aço", "CA-50 (fyk = 500 MPa)"),
+        ("Cobertura nominal", "30 mm (CAA II)"),
+        ("Estribo presumido", "Ø5,0 mm"),
+        ("Bitola longitudinal presumida", "Ø12,5 mm"),
+        ("Coeficientes", "γf = 1,4 · γc = 1,4 · γs = 1,15"),
+        ("αc (bloco retangular)", "0,85 (NBR 6118 17.2.2)"),
+    ]
+    linhas_html = "".join(
+        f"<tr><th>{rot}</th><td>{val}</td></tr>" for rot, val in linhas
+    )
+    return f'<table class="tabela-dados"><tbody>{linhas_html}</tbody></table>'
+
+
+def _cards_esforcos(M_max, V_max) -> str:
+    return (
+        '<div class="cards-esforcos">'
+        f'<div class="card-esforco"><div class="rotulo">Momento máximo</div>'
+        f'<div class="valor">{M_max:.2f} kN·m</div></div>'
+        f'<div class="card-esforco"><div class="rotulo">Cortante máximo</div>'
+        f'<div class="valor">{V_max:.2f} kN</div></div>'
+        '</div>'
+    )
+
+
+def _tabela_armadura(r, n_barras) -> str:
+    def fmt(v, casas=2):
+        if v is None or (isinstance(v, float) and np.isnan(v)):
+            return "—"
+        return f"{v:.{casas}f}"
+
+    linhas = [
+        ("Md (kN·m)", fmt(r.get("Md_kNm"))),
+        ("Kmd", fmt(r.get("Kmd"), 4)),
+        ("Linha neutra x (cm)", fmt(r.get("x_LN_cm"))),
+        ("ξ = x/d", fmt(r.get("csi"), 4)),
+        ("Domínio", _escape_html(r.get("dominio", "—"))),
+        ("As calculado (cm²)", fmt(r.get("As_calc_cm2"))),
+        ("As mínimo (cm²)", fmt(r.get("As_min_cm2"))),
+        ("As máximo (cm²)", fmt(r.get("As_max_cm2"))),
+        ("As adotado (cm²)", fmt(r.get("As_adotado_cm2"))),
+        ("Armadura sugerida", f"{n_barras} × Ø12,5 mm" if n_barras > 0 else "—"),
+        ("Status", _escape_html(r.get("mensagem", ""))),
+    ]
+    linhas_html = "".join(
+        f"<tr><th>{rot}</th><td>{val}</td></tr>" for rot, val in linhas
+    )
+    return f'<table class="tabela-dados"><tbody>{linhas_html}</tbody></table>'
+
+
+def gerar_relatorio_html(L, q, b, h, descricao, M_max, V_max, r) -> str:
+    """
+    Gera string HTML autocontida com todo o relatório da viga.
+
+    Estrutura: dados de entrada, parâmetros, esforços (cards), diagramas 2D
+    interativos (Plotly inline), dimensionamento, visualização 3D (Plotly
+    inline), memória de cálculo renderizada em HTML, espaço para auditoria
+    e disclaimer. Inclui Plotly.js inline UMA ÚNICA VEZ no primeiro gráfico
+    para que o arquivo funcione 100 % offline.
+
+    Parâmetros
+    ----------
+    L, q, b, h : float
+        Entradas do usuário (mesmas unidades do app: m, kN/m, cm, cm).
+    descricao : str
+        Identificação livre da viga.
+    M_max, V_max : float
+        Esforços já calculados pela V2 (kN·m e kN).
+    r : dict
+        Resultado de dimensionar_armadura().
+
+    Retorno
+    -------
+    str
+        HTML completo, pronto para `st.download_button(data=...)`.
+    """
+    n_barras = n_barras_armadura(r.get("As_adotado_cm2"))
+    nome = descricao.strip() if descricao and descricao.strip() else "(sem identificação)"
+    nome_html = _escape_html(nome)
+
+    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    # Memória em Markdown e renderizada
+    memoria_md = montar_memoria(L, q, b, h, descricao, M_max, V_max, r, n_barras)
+    memoria_html = md_para_html(memoria_md)
+
+    # Figuras Plotly — Plotly.js inline só no primeiro (2D); o segundo
+    # reusa o objeto window.Plotly já carregado.
+    fig_2d = construir_fig_2d(L, q, descricao)
+    fig_3d, _ = construir_fig_3d(L, q, b, h, descricao, M_max, r)
+
+    html_2d = fig_2d.to_html(
+        include_plotlyjs=True, full_html=False, div_id="grafico_2d",
+        config={"displaylogo": False},
+    )
+    html_3d = fig_3d.to_html(
+        include_plotlyjs=False, full_html=False, div_id="grafico_3d",
+        config={"displaylogo": False},
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório — Viga {nome_html}</title>
+<style>{_CSS_RELATORIO}</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Relatório de Análise — Viga {nome_html}</h1>
+    <p class="subtitulo">Gerado em {data_hora} pelo app Caixa Preta</p>
+  </header>
+
+  <section id="dados-entrada">
+    <h2>1. Dados de Entrada</h2>
+    {_tabela_dados_entrada(L, q, b, h, descricao)}
+  </section>
+
+  <section id="parametros">
+    <h2>2. Parâmetros Adotados</h2>
+    {_tabela_parametros()}
+  </section>
+
+  <section id="esforcos">
+    <h2>3. Esforços Calculados</h2>
+    {_cards_esforcos(M_max, V_max)}
+  </section>
+
+  <section id="diagramas-2d">
+    <h2>4. Diagramas de Esforços (2D)</h2>
+    {html_2d}
+    <p class="dica">Passe o mouse sobre a curva para ver valores. Use a barra de ferramentas para zoom.</p>
+  </section>
+
+  <section id="armadura">
+    <h2>5. Dimensionamento da Armadura</h2>
+    {_tabela_armadura(r, n_barras)}
+  </section>
+
+  <section id="visualizacao-3d">
+    <h2>6. Visualização 3D</h2>
+    {html_3d}
+    <p class="dica">↻ Arraste para rotacionar | 🔍 Scroll para zoom | duplo-clique reseta a câmera</p>
+  </section>
+
+  <section id="memoria-completa" class="memoria-render">
+    <h2>7. Memória de Cálculo Completa</h2>
+    {memoria_html}
+  </section>
+
+  <section id="auditoria">
+    <h2>8. Auditoria por IA (opcional)</h2>
+    <p>Para auditar este cálculo com outra IA, copie a memória acima e cole em
+    ChatGPT, Claude, Gemini ou similar, pedindo verificação conforme NBR 6118.</p>
+  </section>
+
+  <footer>
+    <p class="disclaimer">⚠️ {DISCLAIMER}</p>
+    <p class="branding">Gerado pelo app Caixa Preta — Engenharia com IA Aberta</p>
+  </footer>
+</div>
+</body>
+</html>
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -623,9 +960,9 @@ def render_tabela(L, q, b, h, descricao, M_max, V_max, r):
     )
 
 
-def render_diagramas(L, q, descricao):
+def construir_fig_2d(L, q, descricao):
+    """Monta a figura Plotly 2D dos diagramas (sem renderizar)."""
     x, M, V = calcular_diagramas(L, q, n=100)
-
     titulo = f"Viga {descricao.strip()}" if descricao and descricao.strip() else "Viga"
 
     fig = make_subplots(
@@ -662,6 +999,11 @@ def render_diagramas(L, q, descricao):
         hovermode="x unified",
         margin=dict(l=60, r=30, t=80, b=60),
     )
+    return fig
+
+
+def render_diagramas(L, q, descricao):
+    fig = construir_fig_2d(L, q, descricao)
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -677,9 +1019,51 @@ def render_memoria(L, q, b, h, descricao, M_max, V_max, r):
     st.code(texto, language="markdown")
 
 
+def render_baixar(L, q, b, h, descricao, M_max, V_max, r):
+    st.subheader("Baixar relatório completo")
+    st.write(
+        "Baixe o relatório completo desta viga em arquivo HTML. "
+        "Funciona offline, mantém os gráficos 2D e 3D interativos, "
+        "e pode ser enviado por e-mail ou WhatsApp."
+    )
+
+    html = gerar_relatorio_html(L, q, b, h, descricao, M_max, V_max, r)
+    tamanho_bytes = len(html.encode("utf-8"))
+    tamanho_mb = tamanho_bytes / (1024 * 1024)
+
+    nome_san = sanitizar_nome_arquivo(descricao)
+    data_arq = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    nome_arquivo = f"relatorio_viga_{nome_san}_{data_arq}.html"
+
+    st.caption(
+        f"Tamanho estimado do arquivo: **{tamanho_mb:.2f} MB** "
+        f"({tamanho_bytes:,} bytes) · nome: `{nome_arquivo}`"
+    )
+    if tamanho_mb > TAMANHO_AVISO_MB:
+        st.warning(
+            f"⚠️ Arquivo grande ({tamanho_mb:.1f} MB). "
+            "Recomendamos baixar em rede Wi-Fi."
+        )
+
+    st.download_button(
+        label="📥 Baixar relatório completo (.html)",
+        data=html,
+        file_name=nome_arquivo,
+        mime="text/html",
+        use_container_width=True,
+    )
+
+    st.info(
+        "📂 O arquivo é autocontido: todas as bibliotecas, gráficos e "
+        "dados estão dentro dele. Pode ser aberto em qualquer navegador, "
+        "sem internet, e os gráficos continuam interativos (rotação 3D, "
+        "zoom, hover)."
+    )
+
+
 def main():
-    st.set_page_config(page_title="Viga Biapoiada V3", page_icon="🏗️", layout="wide")
-    st.title("🏗️ Calculadora de Viga Biapoiada — V3")
+    st.set_page_config(page_title="Viga Biapoiada V4", page_icon="🏗️", layout="wide")
+    st.title("🏗️ Calculadora de Viga Biapoiada — V4")
     st.write(
         "Carga distribuída uniforme · Dimensionamento à flexão simples · "
         "Concreto C30 · Aço CA-50 · NBR 6118"
@@ -717,10 +1101,10 @@ def main():
     M_max, V_max = calcular_esforcos(float(L), float(q))
     r = dimensionar_armadura(float(b), float(h), M_max)
 
-    # 5 abas (V3 adiciona Visualização 3D)
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    # 6 abas (V4 adiciona Baixar Relatório)
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         ["📊 Resultados", "📋 Tabela Pandas", "📈 Diagramas",
-         "📄 Memória", "🏗️ Visualização 3D"]
+         "📄 Memória", "🏗️ Visualização 3D", "📥 Baixar Relatório"]
     )
     with tab1:
         render_resultados(M_max, V_max, r)
@@ -735,6 +1119,9 @@ def main():
     with tab5:
         render_3d(float(L), float(q), float(b), float(h),
                   descricao, M_max, r)
+    with tab6:
+        render_baixar(float(L), float(q), float(b), float(h),
+                      descricao, M_max, V_max, r)
 
     st.divider()
     st.caption(f"⚠️ {DISCLAIMER}")
