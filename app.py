@@ -174,7 +174,7 @@ def montar_memoria(L, q, b, h, descricao, M_max, V_max, r) -> str:
 - Seção: b = {b:.1f} cm × h = {h:.1f} cm
 
 ## Parâmetros adotados
-- Concreto: C30 (fck = 30 MPa)
+- Concreto: C25 (fck = 25 MPa)
 - Aço: CA-50 (fyk = 500 MPa)
 - Cobertura nominal: 30 mm (CAA II)
 - Estribo presumido: Ø5,0 mm
