@@ -1,8 +1,11 @@
 """
-Calculadora de Viga Biapoiada — V2
+Calculadora de Viga Biapoiada — V3
 Cálculo de esforços + dimensionamento de armadura passiva por flexão simples
 conforme NBR 6118 (concreto C30, aço CA-50, CAA II).
+V3: visualização 3D rotacionável com cor mapeada por |M(x)| e armadura.
 """
+
+import math
 
 import numpy as np
 import pandas as pd
@@ -160,11 +163,22 @@ def dimensionar_armadura(b_cm: float, h_cm: float, M_max_kNm: float) -> dict:
 # ---------------------------------------------------------------------------
 # Memória de cálculo (Markdown)
 # ---------------------------------------------------------------------------
-def montar_memoria(L, q, b, h, descricao, M_max, V_max, r) -> str:
+def n_barras_armadura(As_adotado_cm2) -> int:
+    """Estima nº de barras Ø12,5 mm — mín 2, máx 6."""
+    if As_adotado_cm2 is None or (isinstance(As_adotado_cm2, float) and np.isnan(As_adotado_cm2)):
+        return 0
+    AREA_PHI125_CM2 = 1.25  # área aproximada da Ø12,5 (especificação V3)
+    n = math.ceil(As_adotado_cm2 / AREA_PHI125_CM2)
+    return max(2, min(6, n))
+
+
+def montar_memoria(L, q, b, h, descricao, M_max, V_max, r, n_barras: int) -> str:
     nome = descricao.strip() if descricao and descricao.strip() else "(sem identificação)"
 
     def fmt(v, casas=2):
         return "—" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{v:.{casas}f}"
+
+    barras_txt = f"{n_barras} × Ø12,5 mm" if n_barras > 0 else "— (seção inviável)"
 
     return f"""# Memória de Cálculo — Viga {nome}
 
@@ -200,6 +214,12 @@ def montar_memoria(L, q, b, h, descricao, M_max, V_max, r) -> str:
 
 Status: {r['mensagem']}
 
+## Visualização 3D
+- Discretização do vão: 20 segmentos
+- Mapeamento de cor: |M(x)| → RdYlGn_r (verde nos apoios → vermelho no meio do vão)
+- Armadura representada: {barras_txt}
+- Cobertura: 30 mm (CAA II)
+
 ## Pedido para auditoria
 Por favor, audite os cálculos acima conforme NBR 6118. Verifique:
 1. Fórmulas de dimensionamento estão corretas?
@@ -207,6 +227,285 @@ Por favor, audite os cálculos acima conforme NBR 6118. Verifique:
 3. Limite de armadura mínima foi respeitado?
 4. Algum aspecto de segurança que faltou considerar?
 """
+
+
+# ---------------------------------------------------------------------------
+# Visualização 3D (V3) — geometria via Plotly graph_objects
+# ---------------------------------------------------------------------------
+N_SEGMENTOS_3D = 20            # discretização do vão (especificação V3)
+N_SETAS_CARGA = 9              # nº de setas representando q
+COR_BARRAS = "#FFA500"         # laranja-amarelo
+COR_SETAS = "#D62728"          # vermelho
+
+
+def _construir_viga_mesh(L_m: float, b_cm: float, h_cm: float, q: float):
+    """
+    Constrói o paralelepípedo da viga como Mesh3d com cor por |M(x)|.
+    21 seções transversais × 4 vértices = 84 vértices; ~164 triângulos.
+    """
+    b_m = b_cm / 100.0
+    h_m = h_cm / 100.0
+    n_sec = N_SEGMENTOS_3D + 1
+
+    x_secs = np.linspace(0.0, L_m, n_sec)
+    M_secs = q * x_secs * (L_m - x_secs) / 2.0  # M(x) ≥ 0 em viga biapoiada
+
+    # 4 vértices por seção: (0,0), (b,0), (b,h), (0,h) em y/z
+    cantos_yz = [(0.0, 0.0), (b_m, 0.0), (b_m, h_m), (0.0, h_m)]
+
+    vx, vy, vz, intensidade = [], [], [], []
+    for x_i, M_i in zip(x_secs, M_secs):
+        for (y_i, z_i) in cantos_yz:
+            vx.append(float(x_i))
+            vy.append(y_i)
+            vz.append(z_i)
+            intensidade.append(abs(float(M_i)))
+
+    i_idx, j_idx, k_idx = [], [], []
+
+    def add_quad(a, b, c, d):
+        """Adiciona dois triângulos (a,b,c) e (a,c,d) para um quadrilátero."""
+        i_idx.extend([a, a])
+        j_idx.extend([b, c])
+        k_idx.extend([c, d])
+
+    # Tampas das extremidades
+    add_quad(0, 1, 2, 3)                       # x = 0
+    base_fim = 4 * N_SEGMENTOS_3D
+    add_quad(base_fim + 0, base_fim + 3, base_fim + 2, base_fim + 1)  # x = L
+
+    # Faces laterais entre seções consecutivas
+    for s in range(N_SEGMENTOS_3D):
+        a0 = 4 * s          # vértices da seção s: a0+0..a0+3
+        a1 = 4 * (s + 1)    # vértices da seção s+1
+        # face inferior (z=0)
+        add_quad(a0 + 0, a1 + 0, a1 + 1, a0 + 1)
+        # face superior (z=h)
+        add_quad(a0 + 3, a0 + 2, a1 + 2, a1 + 3)
+        # face fundo (y=0)
+        add_quad(a0 + 0, a0 + 3, a1 + 3, a1 + 0)
+        # face frente (y=b)
+        add_quad(a0 + 1, a1 + 1, a1 + 2, a0 + 2)
+
+    return dict(
+        x=vx, y=vy, z=vz,
+        i=i_idx, j=j_idx, k=k_idx,
+        intensity=intensidade,
+    )
+
+
+def _construir_barras(L_m: float, b_cm: float, h_cm: float, n_barras: int):
+    """
+    Linhas das barras longitudinais paralelas ao eixo x.
+    z = cob + φ_estribo + φ_long/2  (consistente com d do dimensionamento).
+    """
+    if n_barras <= 0:
+        return [], [], []
+
+    b_m = b_cm / 100.0
+    cob_m = COB_CM / 100.0
+    phi_est_m = PHI_EST_CM / 100.0
+    phi_long_m = PHI_LONG_CM / 100.0
+
+    z_barra = cob_m + phi_est_m + phi_long_m / 2.0
+    offset_lateral = cob_m + phi_est_m
+
+    if n_barras == 1:
+        ys = [b_m / 2.0]
+    else:
+        y_min = offset_lateral
+        y_max = b_m - offset_lateral
+        ys = np.linspace(y_min, y_max, n_barras).tolist()
+
+    xs, ys_full, zs = [], [], []
+    for y_i in ys:
+        # separador None entre barras → traço descontínuo numa única trace
+        xs.extend([0.0, L_m, None])
+        ys_full.extend([y_i, y_i, None])
+        zs.extend([z_barra, z_barra, None])
+    return xs, ys_full, zs
+
+
+def _construir_setas_carga(L_m: float, h_m: float, b_m: float, q: float):
+    """Hastes (Scatter3d) e cabeças (Cone) das setas representando q."""
+    # Comprimento da haste cresce com q, mas saturado para não estourar a vista
+    shaft_len = float(np.clip(0.20 + q * 0.005, 0.20, 0.60))
+    cone_size = 0.06  # altura do cone em metros
+
+    x_setas = np.linspace(L_m * 0.05, L_m * 0.95, N_SETAS_CARGA)
+
+    # Hastes verticais (do topo da seta até logo acima da cabeça)
+    xs, ys, zs = [], [], []
+    for x_i in x_setas:
+        xs.extend([float(x_i), float(x_i), None])
+        ys.extend([b_m / 2.0, b_m / 2.0, None])
+        zs.extend([h_m + shaft_len, h_m + cone_size, None])
+
+    # Cones com tip tocando o topo da viga, apontando pra baixo
+    cone_x = [float(x) for x in x_setas]
+    cone_y = [b_m / 2.0] * N_SETAS_CARGA
+    cone_z = [h_m] * N_SETAS_CARGA
+    cone_u = [0.0] * N_SETAS_CARGA
+    cone_v = [0.0] * N_SETAS_CARGA
+    cone_w = [-1.0] * N_SETAS_CARGA
+
+    return (xs, ys, zs), (cone_x, cone_y, cone_z, cone_u, cone_v, cone_w), cone_size
+
+
+def _construir_apoios(L_m: float, b_cm: float):
+    """
+    Dois prismas triangulares cinzas embaixo das extremidades.
+    6 vértices/apoio, 8 triângulos/apoio (16 no total).
+    """
+    b_m = b_cm / 100.0
+    altura = 0.15
+    meia_base = 0.10
+
+    vx, vy, vz = [], [], []
+    i_idx, j_idx, k_idx = [], [], []
+
+    for x_a in (0.0, L_m):
+        base = len(vx)
+        # Aresta superior (toca a viga em z=0): v0 (y=0), v1 (y=b)
+        vx.extend([x_a, x_a])
+        vy.extend([0.0, b_m])
+        vz.extend([0.0, 0.0])
+        # Aresta inferior esquerda: v2 (y=0), v3 (y=b)
+        vx.extend([x_a - meia_base, x_a - meia_base])
+        vy.extend([0.0, b_m])
+        vz.extend([-altura, -altura])
+        # Aresta inferior direita: v4 (y=0), v5 (y=b)
+        vx.extend([x_a + meia_base, x_a + meia_base])
+        vy.extend([0.0, b_m])
+        vz.extend([-altura, -altura])
+
+        v0, v1, v2, v3, v4, v5 = base, base + 1, base + 2, base + 3, base + 4, base + 5
+        # face esquerda (sloping)
+        i_idx.extend([v0, v0]); j_idx.extend([v2, v3]); k_idx.extend([v3, v1])
+        # face direita
+        i_idx.extend([v0, v0]); j_idx.extend([v1, v5]); k_idx.extend([v5, v4])
+        # face inferior
+        i_idx.extend([v2, v2]); j_idx.extend([v4, v5]); k_idx.extend([v5, v3])
+        # tampa y=0
+        i_idx.extend([v0]); j_idx.extend([v2]); k_idx.extend([v4])
+        # tampa y=b
+        i_idx.extend([v1]); j_idx.extend([v5]); k_idx.extend([v3])
+
+    return dict(x=vx, y=vy, z=vz, i=i_idx, j=j_idx, k=k_idx)
+
+
+def render_3d(L, q, b, h, descricao, M_max, r):
+    nome = descricao.strip() if descricao and descricao.strip() else "(sem identificação)"
+    n_barras = n_barras_armadura(r.get("As_adotado_cm2"))
+    b_m = b / 100.0
+    h_m = h / 100.0
+
+    fig = go.Figure()
+
+    # 1. Paralelepípedo da viga colorido por |M(x)|
+    mesh_viga = _construir_viga_mesh(L, b, h, q)
+    fig.add_trace(go.Mesh3d(
+        **mesh_viga,
+        colorscale="RdYlGn_r",
+        cmin=0.0,
+        cmax=float(M_max) if M_max > 0 else 1.0,
+        showscale=True,
+        colorbar=dict(
+            title=dict(text="|M(x)|<br>(kN·m)", side="right"),
+            x=1.02, len=0.7, thickness=14,
+        ),
+        flatshading=False,
+        opacity=1.0,
+        lighting=dict(ambient=0.65, diffuse=0.75, specular=0.1),
+        hovertemplate=("x = %{x:.2f} m<br>|M| = %{intensity:.2f} kN·m"
+                       "<extra></extra>"),
+        name="Viga",
+    ))
+
+    # 2. Apoios estilizados
+    apoios = _construir_apoios(L, b)
+    fig.add_trace(go.Mesh3d(
+        **apoios,
+        color="#888888",
+        opacity=0.85,
+        flatshading=True,
+        showscale=False,
+        hoverinfo="skip",
+        name="Apoios",
+    ))
+
+    # 3. Hastes das setas de carga
+    (sx, sy, sz), (cx, cy, cz, cu, cv, cw), cone_size = _construir_setas_carga(L, h_m, b_m, q)
+    fig.add_trace(go.Scatter3d(
+        x=sx, y=sy, z=sz,
+        mode="lines",
+        line=dict(color=COR_SETAS, width=5),
+        name=f"Carga q = {q:.1f} kN/m",
+        hoverinfo="skip",
+        showlegend=True,
+    ))
+    # 4. Cabeças das setas de carga
+    fig.add_trace(go.Cone(
+        x=cx, y=cy, z=cz, u=cu, v=cv, w=cw,
+        anchor="tip",
+        sizemode="absolute",
+        sizeref=cone_size,
+        colorscale=[[0, COR_SETAS], [1, COR_SETAS]],
+        showscale=False,
+        showlegend=False,
+        hoverinfo="skip",
+    ))
+
+    # 5. Armadura longitudinal
+    if n_barras > 0:
+        bx, by, bz = _construir_barras(L, b, h, n_barras)
+        fig.add_trace(go.Scatter3d(
+            x=bx, y=by, z=bz,
+            mode="lines",
+            line=dict(color=COR_BARRAS, width=8),
+            name=f"{n_barras} × Ø12,5 mm",
+            hovertemplate="Armadura longitudinal<extra></extra>",
+        ))
+
+    # Layout — câmera isométrica suave, eixos em metros, proporção real
+    titulo = (f"Viga {nome} — L={L:g} m | b={b:g} cm × h={h:g} cm | "
+              f"M_max={M_max:.2f} kN·m")
+    fig.update_layout(
+        title=dict(text=titulo, x=0.5, xanchor="center", font=dict(size=14)),
+        scene=dict(
+            xaxis=dict(title="x (m) — vão", showgrid=True, backgroundcolor="white"),
+            yaxis=dict(title="y (m) — largura", showgrid=True, backgroundcolor="white"),
+            zaxis=dict(title="z (m) — altura", showgrid=True, backgroundcolor="white"),
+            aspectmode="data",
+            camera=dict(
+                eye=dict(x=1.5, y=1.5, z=1.0),
+                projection=dict(type="perspective"),
+            ),
+        ),
+        height=600,
+        margin=dict(l=10, r=10, t=70, b=10),
+        paper_bgcolor="white",
+        legend=dict(x=0.0, y=1.0, bgcolor="rgba(255,255,255,0.7)"),
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Caixa explicativa
+    info_armadura = (
+        f"🟡 Linhas amarelas representam a armadura longitudinal calculada "
+        f"({n_barras} barras Ø12,5 mm)"
+        if n_barras > 0 else
+        "🟡 Sem armadura representada (seção inviável — ver aba Resultados)"
+    )
+    st.info(
+        "🎨 Cor representa intensidade do momento fletor M(x) — "
+        "verde nos apoios, vermelho no meio do vão  \n"
+        f"{info_armadura} — posicionadas no eixo do `d` "
+        "(cobertura + estribo + φ/2)  \n"
+        f"🔻 Setas vermelhas representam a carga distribuída q  \n"
+        "↻ Arraste para rotacionar · 🔍 Scroll para zoom · "
+        "duplo-clique reseta a câmera"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -367,7 +666,8 @@ def render_diagramas(L, q, descricao):
 
 
 def render_memoria(L, q, b, h, descricao, M_max, V_max, r):
-    texto = montar_memoria(L, q, b, h, descricao, M_max, V_max, r)
+    n_barras = n_barras_armadura(r.get("As_adotado_cm2"))
+    texto = montar_memoria(L, q, b, h, descricao, M_max, V_max, r, n_barras)
     st.markdown(texto)
     st.divider()
     st.markdown(
@@ -378,8 +678,8 @@ def render_memoria(L, q, b, h, descricao, M_max, V_max, r):
 
 
 def main():
-    st.set_page_config(page_title="Viga Biapoiada V2", page_icon="🏗️", layout="wide")
-    st.title("🏗️ Calculadora de Viga Biapoiada — V2")
+    st.set_page_config(page_title="Viga Biapoiada V3", page_icon="🏗️", layout="wide")
+    st.title("🏗️ Calculadora de Viga Biapoiada — V3")
     st.write(
         "Carga distribuída uniforme · Dimensionamento à flexão simples · "
         "Concreto C30 · Aço CA-50 · NBR 6118"
@@ -417,9 +717,10 @@ def main():
     M_max, V_max = calcular_esforcos(float(L), float(q))
     r = dimensionar_armadura(float(b), float(h), M_max)
 
-    # 4 abas
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["📊 Resultados", "📋 Tabela Pandas", "📈 Diagramas", "📄 Memória"]
+    # 5 abas (V3 adiciona Visualização 3D)
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["📊 Resultados", "📋 Tabela Pandas", "📈 Diagramas",
+         "📄 Memória", "🏗️ Visualização 3D"]
     )
     with tab1:
         render_resultados(M_max, V_max, r)
@@ -431,6 +732,9 @@ def main():
     with tab4:
         render_memoria(float(L), float(q), float(b), float(h),
                        descricao, M_max, V_max, r)
+    with tab5:
+        render_3d(float(L), float(q), float(b), float(h),
+                  descricao, M_max, r)
 
     st.divider()
     st.caption(f"⚠️ {DISCLAIMER}")
