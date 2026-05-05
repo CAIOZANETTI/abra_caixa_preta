@@ -418,6 +418,9 @@ def construir_fig_3d(p: Portico, res: dict, modo: str = "M") -> go.Figure:
         margin=dict(l=10, r=10, t=70, b=10),
         paper_bgcolor="white",
         legend=dict(x=0.0, y=1.0, bgcolor="rgba(255,255,255,0.7)"),
+        # Mantém ângulo/zoom da câmera quando o usuário troca L, H, q etc.
+        # — só recalcula a estrutura interna sem resetar a vista.
+        uirevision="portico_3d_camera",
     )
     return fig
 
