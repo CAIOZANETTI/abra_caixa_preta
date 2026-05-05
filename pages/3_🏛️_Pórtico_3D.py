@@ -75,6 +75,64 @@ def cortante_viga(x: float, p: Portico) -> float:
     return p.q * p.L / 2.0 - p.q * x
 
 
+def _calcular_deformada(p: Portico, res: dict):
+    """Deflexões EI-fictícias (EI=1), depois reescalonadas para visualização.
+
+    Retorna (u_col_left, v_beam_up, escala, escala_visual_m):
+      u_col_left(z): deslocamento horizontal já escalonado (m), em +x, do
+                     pilar esquerdo. Mirror para o direito.
+      v_beam_up(x):  deslocamento vertical já escalonado (m), em +z (negativo
+                     = viga desce).
+      escala:        fator multiplicativo aplicado às deflexões originais.
+      escala_visual_m: deslocamento máximo após escalonamento (m).
+
+    Dedução
+    -------
+    Pilar (z ∈ [0,H], M(z) = (z/H)·M_c, EI = 1):
+        u(z) = M_c · z · (z² − H²) / (6 H)
+        u(0) = u(H) = 0; mínimo em z = H/√3 com u_min = −M_c·H²/(9√3).
+
+    Viga (q distribuído, momentos −M_c nos dois cantos):
+        EI · v_down''(x) = −M(x) com M(x) = −M_c + qx(L−x)/2
+        v_down(x) = M_c·x²/2 − qLx³/12 + qx⁴/24 + C1·x
+        com C1 = qL³/24 − M_c·L/2 (de v_down(L) = 0).
+
+    Compatibilidade no canto B: rotação CCW-absoluta do topo do pilar
+    (= −du/dz|_H = −M_c·H/3) iguala a rotação CCW-absoluta da viga em
+    x=0 (= −dv_down/dx|_0 = −C1). Ambas valem −θ_B (verificado).
+    """
+    M_c = res["M_canto_kNm"]
+    q = p.q
+    L, H = p.L, p.H
+
+    def u_col_left_raw(z: float) -> float:
+        if H <= 0:
+            return 0.0
+        if z >= H:
+            return 0.0  # joint zone (z > H): rígido
+        return M_c * z * (z * z - H * H) / (6.0 * H)
+
+    C1 = q * L ** 3 / 24.0 - M_c * L / 2.0
+
+    def v_beam_up_raw(x: float) -> float:
+        v_down = M_c * x * x / 2.0 - q * L * x ** 3 / 12.0 \
+                 + q * x ** 4 / 24.0 + C1 * x
+        return -v_down
+
+    z_pts = np.linspace(0.0, H, 31)
+    u_max = max(abs(u_col_left_raw(z)) for z in z_pts) if H > 0 else 0.0
+    x_pts = np.linspace(0.0, L, 31)
+    v_max = max(abs(v_beam_up_raw(x)) for x in x_pts)
+    desloc_max_raw = max(u_max, v_max, 1e-12)
+    target = 0.10 * max(L, H)
+    escala = target / desloc_max_raw
+
+    return (lambda z: u_col_left_raw(z) * escala,
+            lambda x: v_beam_up_raw(x) * escala,
+            escala,
+            target)
+
+
 # ---------------------------------------------------------------------------
 # Construção dos meshes 3D
 # ---------------------------------------------------------------------------
@@ -114,10 +172,13 @@ def _box_mesh(corners_front, corners_back, intensities_front, intensities_back):
 
 
 def _segmentos_pilar(x_centro: float, p: Portico, res: dict,
-                     n_seg: int, modo: str):
+                     n_seg: int, modo: str,
+                     desloc_x_fn=None):
     """Pilar (eixo z) subdividido em n_seg trechos.
     modo='M': M(z) = (z/H)·M_canto (linear, 0 na base → M_canto no topo).
-    modo='V': cortante constante = H_reac em toda a altura."""
+    modo='V': cortante constante = H_reac em toda a altura.
+    desloc_x_fn(z): deslocamento horizontal opcional do centro da seção
+                    (None → estrutura rígida)."""
     bp = p.b_pilar
     H = p.H
     M_canto = res["M_canto_kNm"]
@@ -129,9 +190,10 @@ def _segmentos_pilar(x_centro: float, p: Portico, res: dict,
 
     # Cada seção tem 4 vértices: cantos do quadrado de lado bp em torno de x_centro,y=0.
     for k_sec, z in enumerate(z_pts):
+        dx_centro = desloc_x_fn(float(z)) if desloc_x_fn else 0.0
         for (dx, dy) in [(-bp / 2, -bp / 2), (+bp / 2, -bp / 2),
                          (+bp / 2, +bp / 2), (-bp / 2, +bp / 2)]:
-            vx.append(x_centro + dx)
+            vx.append(x_centro + dx_centro + dx)
             vy.append(0.0 + dy)
             vz.append(float(z))
             if modo == "V":
@@ -159,9 +221,12 @@ def _segmentos_pilar(x_centro: float, p: Portico, res: dict,
     return dict(x=vx, y=vy, z=vz, i=ii, j=jj, k=kk, intensity=intens)
 
 
-def _segmentos_viga(p: Portico, res: dict, n_seg: int, modo: str):
+def _segmentos_viga(p: Portico, res: dict, n_seg: int, modo: str,
+                    desloc_z_fn=None):
     """Viga (eixo x) subdividida em n_seg trechos. Centro da seção em
-    z = H + h_viga/2 (apoiada no topo dos pilares)."""
+    z = H + h_viga/2 (apoiada no topo dos pilares).
+    desloc_z_fn(x): deslocamento vertical opcional (em +z) do centro da
+                    seção (None → estrutura rígida)."""
     L, H = p.L, p.H
     bv, hv = p.b_viga, p.h_viga
     M_canto = res["M_canto_kNm"]
@@ -176,11 +241,12 @@ def _segmentos_viga(p: Portico, res: dict, n_seg: int, modo: str):
             val = abs(cortante_viga(float(x), p))
         else:
             val = abs(momento_viga(float(x), p, M_canto))
+        dz_centro = desloc_z_fn(float(x)) if desloc_z_fn else 0.0
         for (dy, dz) in [(-bv / 2, -hv / 2), (+bv / 2, -hv / 2),
                          (+bv / 2, +hv / 2), (-bv / 2, +hv / 2)]:
             vx.append(float(x))
             vy.append(0.0 + dy)
-            vz.append(z_centro + dz)
+            vz.append(z_centro + dz_centro + dz)
             intens.append(val)
 
     def quad(a, b, c, d):
@@ -236,24 +302,58 @@ COR_APOIO = "#777777"
 
 
 def construir_fig_3d(p: Portico, res: dict, modo: str = "M") -> go.Figure:
-    """modo='M' colore por |M(x,z)|; modo='V' colore por |V(x,z)|."""
+    """modo='M' colora por |M(x,z)|; modo='V' por |V|; modo='D' mostra
+    deformada exagerada (colorida por |M|) com a estrutura indeformada
+    em ghost cinza."""
     n_seg = 16
 
     if modo == "V":
-        # cmax = maior |V| da estrutura (geralmente qL/2 na viga, > V do pilar)
         cmax = max(res["V_max_viga_kN"], res["V_pilar_kN"])
         unidade, simbolo = "kN", "|V|"
     else:
+        # 'M' e 'D' usam a mesma escala de momento
         cmax = res["M_max_abs_kNm"]
         unidade, simbolo = "kN·m", "|M|"
 
     fig = go.Figure()
 
-    coletas = [
-        ("Pilar esquerdo", _segmentos_pilar(0.0, p, res, n_seg, modo)),
-        ("Pilar direito", _segmentos_pilar(p.L, p, res, n_seg, modo)),
-        ("Viga", _segmentos_viga(p, res, n_seg, modo)),
-    ]
+    if modo == "D":
+        # Ghost da estrutura indeformada
+        ghost = [
+            _segmentos_pilar(0.0, p, res, n_seg, "M"),
+            _segmentos_pilar(p.L, p, res, n_seg, "M"),
+            _segmentos_viga(p, res, n_seg, "M"),
+        ]
+        for m in ghost:
+            fig.add_trace(go.Mesh3d(
+                **{k: m[k] for k in ("x", "y", "z", "i", "j", "k")},
+                color="#BBBBBB",
+                opacity=0.18,
+                flatshading=True,
+                showscale=False,
+                hoverinfo="skip",
+                name="Indeformada",
+                showlegend=False,
+            ))
+        u_fn, v_fn, escala, _ = _calcular_deformada(p, res)
+        coletas = [
+            ("Pilar esquerdo (deformado)",
+             _segmentos_pilar(0.0, p, res, n_seg, "M",
+                              desloc_x_fn=u_fn)),
+            ("Pilar direito (deformado)",
+             _segmentos_pilar(p.L, p, res, n_seg, "M",
+                              desloc_x_fn=lambda z: -u_fn(z))),
+            ("Viga (deformada)",
+             _segmentos_viga(p, res, n_seg, "M",
+                             desloc_z_fn=v_fn)),
+        ]
+    else:
+        coletas = [
+            ("Pilar esquerdo", _segmentos_pilar(0.0, p, res, n_seg, modo)),
+            ("Pilar direito", _segmentos_pilar(p.L, p, res, n_seg, modo)),
+            ("Viga", _segmentos_viga(p, res, n_seg, modo)),
+        ]
+
     for idx, (nome, m) in enumerate(coletas):
         fig.add_trace(go.Mesh3d(
             **m,
@@ -283,8 +383,12 @@ def construir_fig_3d(p: Portico, res: dict, modo: str = "M") -> go.Figure:
         name="Apoios",
     ))
 
-    rotulo_modo = ("Momento fletor |M|" if modo == "M"
-                   else "Esforço cortante |V|")
+    if modo == "M":
+        rotulo_modo = "Momento fletor |M|"
+    elif modo == "V":
+        rotulo_modo = "Esforço cortante |V|"
+    else:
+        rotulo_modo = "Deformada (exagerada)"
     titulo = (f"Pórtico bi-rotulado · {rotulo_modo} — "
               f"L={p.L:.1f} m · H={p.H:.1f} m · q={p.q:.0f} kN/m  |  "
               f"M_canto = {res['M_canto_kNm']:.1f} kN·m · "
@@ -372,12 +476,17 @@ def construir_fig_diagramas(p: Portico, res: dict) -> go.Figure:
 # ---------------------------------------------------------------------------
 def render_3d_tab(p: Portico, res: dict):
     escolha = st.radio(
-        "Esforço colorido na estrutura:",
-        ("Momento fletor |M|", "Cortante |V|"),
+        "Visualização 3D:",
+        ("Momento fletor |M|", "Cortante |V|", "Deformada (exagerada)"),
         horizontal=True,
         key="modo_3d",
     )
-    modo = "V" if "Cortante" in escolha else "M"
+    if "Cortante" in escolha:
+        modo = "V"
+    elif "Deformada" in escolha:
+        modo = "D"
+    else:
+        modo = "M"
 
     fig = construir_fig_3d(p, res, modo=modo)
     st.plotly_chart(fig, use_container_width=True)
@@ -400,7 +509,7 @@ def render_3d_tab(p: Portico, res: dict):
             "zero nos pontos onde M troca de sinal e volta a subir no meio "
             "do vão (sagging). ↻ Arraste para rotacionar · 🔍 Scroll para zoom."
         )
-    else:
+    elif modo == "V":
         st.info(
             f"🎨 |V| na viga é máximo nos apoios (qL/2 = "
             f"{res['V_max_viga_kN']:.0f} kN) e zero no meio do vão. Nos "
@@ -409,6 +518,16 @@ def render_3d_tab(p: Portico, res: dict):
             "reação horizontal do apoio. Por isso o pilar "
             "aparece quase verde uniforme: o esforço dele é pequeno "
             "comparado ao da viga."
+        )
+    else:  # modo == "D"
+        st.info(
+            "🎨 Estrutura **deformada** (colorida por |M|) sobreposta à "
+            "**indeformada** (cinza translúcida). A viga arqueia para baixo "
+            "no meio do vão; os pilares **bombam para fora** (sentido "
+            "contrário ao centro do pórtico) — efeito direto do momento que "
+            "vaza da viga para o canto. Os deslocamentos foram **amplificados "
+            "para serem visíveis**: a deflexão real depende de EI e na "
+            "prática é da ordem de mm. ↻ Arraste para rotacionar."
         )
 
 
