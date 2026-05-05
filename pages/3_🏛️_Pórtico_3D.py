@@ -113,14 +113,19 @@ def _box_mesh(corners_front, corners_back, intensities_front, intensities_back):
     return dict(x=vx, y=vy, z=vz, i=ii, j=jj, k=kk, intensity=intens)
 
 
-def _segmentos_pilar(x_centro: float, p: Portico, M_canto: float, n_seg: int):
-    """Pilar (eixo z) subdividido em n_seg trechos. M(z) = (z/H)·M_canto."""
+def _segmentos_pilar(x_centro: float, p: Portico, res: dict,
+                     n_seg: int, modo: str):
+    """Pilar (eixo z) subdividido em n_seg trechos.
+    modo='M': M(z) = (z/H)·M_canto (linear, 0 na base → M_canto no topo).
+    modo='V': cortante constante = H_reac em toda a altura."""
     bp = p.b_pilar
     H = p.H
+    M_canto = res["M_canto_kNm"]
+    V_pilar = res["V_pilar_kN"]
 
     vx, vy, vz, ii, jj, kk, intens = [], [], [], [], [], [], []
     base = 0
-    z_pts = np.linspace(0.0, H, n_seg + 1)
+    z_pts = np.linspace(0.0, H + p.h_viga, n_seg + 1)
 
     # Cada seção tem 4 vértices: cantos do quadrado de lado bp em torno de x_centro,y=0.
     for k_sec, z in enumerate(z_pts):
@@ -129,7 +134,11 @@ def _segmentos_pilar(x_centro: float, p: Portico, M_canto: float, n_seg: int):
             vx.append(x_centro + dx)
             vy.append(0.0 + dy)
             vz.append(float(z))
-            intens.append(abs(M_canto) * (z / H if H > 0 else 1.0))
+            if modo == "V":
+                intens.append(abs(V_pilar))
+            else:
+                z_clip = min(z, H)
+                intens.append(abs(M_canto) * (z_clip / H if H > 0 else 1.0))
 
     def quad(a, b, c, d):
         ii.extend([a, a]); jj.extend([b, c]); kk.extend([c, d])
@@ -150,11 +159,12 @@ def _segmentos_pilar(x_centro: float, p: Portico, M_canto: float, n_seg: int):
     return dict(x=vx, y=vy, z=vz, i=ii, j=jj, k=kk, intensity=intens)
 
 
-def _segmentos_viga(p: Portico, M_canto: float, n_seg: int):
+def _segmentos_viga(p: Portico, res: dict, n_seg: int, modo: str):
     """Viga (eixo x) subdividida em n_seg trechos. Centro da seção em
     z = H + h_viga/2 (apoiada no topo dos pilares)."""
     L, H = p.L, p.H
     bv, hv = p.b_viga, p.h_viga
+    M_canto = res["M_canto_kNm"]
 
     vx, vy, vz, ii, jj, kk, intens = [], [], [], [], [], [], []
     x_pts = np.linspace(0.0, L, n_seg + 1)
@@ -162,12 +172,16 @@ def _segmentos_viga(p: Portico, M_canto: float, n_seg: int):
 
     # Cada seção: 4 cantos (em y, z) em torno de (0, z_centro).
     for x in x_pts:
+        if modo == "V":
+            val = abs(cortante_viga(float(x), p))
+        else:
+            val = abs(momento_viga(float(x), p, M_canto))
         for (dy, dz) in [(-bv / 2, -hv / 2), (+bv / 2, -hv / 2),
                          (+bv / 2, +hv / 2), (-bv / 2, +hv / 2)]:
             vx.append(float(x))
             vy.append(0.0 + dy)
             vz.append(z_centro + dz)
-            intens.append(abs(momento_viga(float(x), p, M_canto)))
+            intens.append(val)
 
     def quad(a, b, c, d):
         ii.extend([a, a]); jj.extend([b, c]); kk.extend([c, d])
@@ -215,63 +229,45 @@ def _construir_apoios(p: Portico):
     return dict(x=vx, y=vy, z=vz, i=ii, j=jj, k=kk)
 
 
-def _setas_carga(p: Portico, n_setas: int = 9):
-    """Setas verticais (Scatter3d hastes + Cone cabeças) representando q
-    distribuído sobre o topo da viga."""
-    L, H = p.L, p.H
-    z_topo = H + p.h_viga
-    shaft_len = float(np.clip(0.20 + p.q * 0.005, 0.20, 0.50))
-    cone_size = 0.10
-
-    x_setas = np.linspace(L * 0.06, L * 0.94, n_setas)
-
-    xs, ys, zs = [], [], []
-    for x_i in x_setas:
-        xs.extend([float(x_i), float(x_i), None])
-        ys.extend([0.0, 0.0, None])
-        zs.extend([z_topo + shaft_len, z_topo + cone_size, None])
-
-    cone_x = [float(x) for x in x_setas]
-    cone_y = [0.0] * n_setas
-    cone_z = [z_topo] * n_setas
-    cone_u = [0.0] * n_setas
-    cone_v = [0.0] * n_setas
-    cone_w = [-1.0] * n_setas
-    return (xs, ys, zs), (cone_x, cone_y, cone_z, cone_u, cone_v, cone_w), cone_size
-
-
 # ---------------------------------------------------------------------------
 # Figuras
 # ---------------------------------------------------------------------------
-COR_SETAS = "#D62728"
 COR_APOIO = "#777777"
 
 
-def construir_fig_3d(p: Portico, res: dict) -> go.Figure:
-    M_canto = res["M_canto_kNm"]
-    M_max = res["M_max_abs_kNm"]
+def construir_fig_3d(p: Portico, res: dict, modo: str = "M") -> go.Figure:
+    """modo='M' colore por |M(x,z)|; modo='V' colore por |V(x,z)|."""
     n_seg = 16
+
+    if modo == "V":
+        # cmax = maior |V| da estrutura (geralmente qL/2 na viga, > V do pilar)
+        cmax = max(res["V_max_viga_kN"], res["V_pilar_kN"])
+        unidade, simbolo = "kN", "|V|"
+    else:
+        cmax = res["M_max_abs_kNm"]
+        unidade, simbolo = "kN·m", "|M|"
 
     fig = go.Figure()
 
-    # 3 barras coloridas por |M|, mesmo colorscale
     coletas = [
-        ("Pilar esquerdo", _segmentos_pilar(0.0, p, M_canto, n_seg)),
-        ("Pilar direito", _segmentos_pilar(p.L, p, M_canto, n_seg)),
-        ("Viga", _segmentos_viga(p, M_canto, n_seg)),
+        ("Pilar esquerdo", _segmentos_pilar(0.0, p, res, n_seg, modo)),
+        ("Pilar direito", _segmentos_pilar(p.L, p, res, n_seg, modo)),
+        ("Viga", _segmentos_viga(p, res, n_seg, modo)),
     ]
     for idx, (nome, m) in enumerate(coletas):
         fig.add_trace(go.Mesh3d(
             **m,
             colorscale="RdYlGn_r",
-            cmin=0.0, cmax=max(M_max, 1e-6),
+            cmin=0.0, cmax=max(cmax, 1e-6),
             showscale=(idx == 0),
-            colorbar=dict(title=dict(text="|M|<br>(kN·m)", side="right"),
+            colorbar=dict(title=dict(text=f"{simbolo}<br>({unidade})",
+                                     side="right"),
                           x=1.02, len=0.7, thickness=14) if idx == 0 else None,
             flatshading=False,
             opacity=1.0,
             lighting=dict(ambient=0.65, diffuse=0.75, specular=0.1),
-            hovertemplate="|M| = %{intensity:.2f} kN·m<extra>" + nome + "</extra>",
+            hovertemplate=f"{simbolo} = %{{intensity:.2f}} {unidade}"
+                          f"<extra>{nome}</extra>",
             name=nome,
         ))
 
@@ -287,24 +283,12 @@ def construir_fig_3d(p: Portico, res: dict) -> go.Figure:
         name="Apoios",
     ))
 
-    # Setas de carga
-    (sx, sy, sz), (cx, cy, cz, cu, cv, cw), cone_size = _setas_carga(p)
-    fig.add_trace(go.Scatter3d(
-        x=sx, y=sy, z=sz, mode="lines",
-        line=dict(color=COR_SETAS, width=5),
-        name=f"q = {p.q:.0f} kN/m",
-        hoverinfo="skip",
-    ))
-    fig.add_trace(go.Cone(
-        x=cx, y=cy, z=cz, u=cu, v=cv, w=cw,
-        anchor="tip", sizemode="absolute", sizeref=cone_size,
-        colorscale=[[0, COR_SETAS], [1, COR_SETAS]],
-        showscale=False, showlegend=False, hoverinfo="skip",
-    ))
-
-    titulo = (f"Pórtico bi-rotulado — L={p.L:.1f} m · H={p.H:.1f} m · "
-              f"q={p.q:.0f} kN/m  |  M_canto = {M_canto:.1f} kN·m · "
-              f"M_meio = {res['M_meio_kNm']:.1f} kN·m")
+    rotulo_modo = ("Momento fletor |M|" if modo == "M"
+                   else "Esforço cortante |V|")
+    titulo = (f"Pórtico bi-rotulado · {rotulo_modo} — "
+              f"L={p.L:.1f} m · H={p.H:.1f} m · q={p.q:.0f} kN/m  |  "
+              f"M_canto = {res['M_canto_kNm']:.1f} kN·m · "
+              f"V_max = {res['V_max_viga_kN']:.1f} kN")
     fig.update_layout(
         title=dict(text=titulo, x=0.5, xanchor="center", font=dict(size=13)),
         scene=dict(
@@ -387,7 +371,15 @@ def construir_fig_diagramas(p: Portico, res: dict) -> go.Figure:
 # Render
 # ---------------------------------------------------------------------------
 def render_3d_tab(p: Portico, res: dict):
-    fig = construir_fig_3d(p, res)
+    escolha = st.radio(
+        "Esforço colorido na estrutura:",
+        ("Momento fletor |M|", "Cortante |V|"),
+        horizontal=True,
+        key="modo_3d",
+    )
+    modo = "V" if "Cortante" in escolha else "M"
+
+    fig = construir_fig_3d(p, res, modo=modo)
     st.plotly_chart(fig, use_container_width=True)
 
     c1, c2, c3, c4 = st.columns(4)
@@ -401,12 +393,23 @@ def render_3d_tab(p: Portico, res: dict):
     c4.metric("Reação V", f"{res['V_reac_kN']:.1f} kN",
               help="Reação vertical em cada apoio = qL/2.")
 
-    st.info(
-        "🎨 As barras estão coloridas por |M| na mesma escala. Repare como "
-        "o pilar é zerado na base (rótula) e cresce até o canto, e como a "
-        "viga é negativa (hogging) nos cantos e positiva (sagging) no meio. "
-        "↻ Arraste para rotacionar · 🔍 Scroll para zoom."
-    )
+    if modo == "M":
+        st.info(
+            "🎨 |M| é zero na base do pilar (rótula) e cresce linearmente até "
+            "o canto. Na viga, o módulo é alto nos cantos (hogging), cai a "
+            "zero nos pontos onde M troca de sinal e volta a subir no meio "
+            "do vão (sagging). ↻ Arraste para rotacionar · 🔍 Scroll para zoom."
+        )
+    else:
+        st.info(
+            f"🎨 |V| na viga é máximo nos apoios (qL/2 = "
+            f"{res['V_max_viga_kN']:.0f} kN) e zero no meio do vão. Nos "
+            f"pilares o cortante é constante e bem menor "
+            f"({res['V_pilar_kN']:.1f} kN = M_canto/H) — é exatamente a "
+            "reação horizontal do apoio. Por isso o pilar "
+            "aparece quase verde uniforme: o esforço dele é pequeno "
+            "comparado ao da viga."
+        )
 
 
 def render_diagramas_tab(p: Portico, res: dict):
