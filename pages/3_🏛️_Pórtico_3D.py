@@ -225,23 +225,34 @@ def _segmentos_viga(p: Portico, res: dict, n_seg: int, modo: str,
                     desloc_z_fn=None):
     """Viga (eixo x) subdividida em n_seg trechos. Centro da seção em
     z = H + h_viga/2 (apoiada no topo dos pilares).
-    desloc_z_fn(x): deslocamento vertical opcional (em +z) do centro da
-                    seção (None → estrutura rígida)."""
+
+    Estende-se visualmente em ±b_pilar/2 para cobrir o topo dos pilares
+    (sem deixar canto exposto). O cálculo de M(x) e V(x) usa x clipado
+    a [0, L] — fora desse intervalo o esforço é constante e igual ao
+    valor no apoio (M = −M_canto, V = ±qL/2)."""
     L, H = p.L, p.H
     bv, hv = p.b_viga, p.h_viga
+    bp = p.b_pilar
     M_canto = res["M_canto_kNm"]
 
     vx, vy, vz, ii, jj, kk, intens = [], [], [], [], [], [], []
-    x_pts = np.linspace(0.0, L, n_seg + 1)
+    x_pts = np.linspace(-bp / 2.0, L + bp / 2.0, n_seg + 1)
     z_centro = H + hv / 2.0
 
     # Cada seção: 4 cantos (em y, z) em torno de (0, z_centro).
     for x in x_pts:
+        x_clip = float(min(max(x, 0.0), L))
         if modo == "V":
-            val = abs(cortante_viga(float(x), p))
+            val = abs(cortante_viga(x_clip, p))
         else:
-            val = abs(momento_viga(float(x), p, M_canto))
-        dz_centro = desloc_z_fn(float(x)) if desloc_z_fn else 0.0
+            val = abs(momento_viga(x_clip, p, M_canto))
+        # Para o deslocamento (modo D), usar 0 fora do vão (junta rígida).
+        if desloc_z_fn is None:
+            dz_centro = 0.0
+        elif 0.0 <= x <= L:
+            dz_centro = desloc_z_fn(float(x))
+        else:
+            dz_centro = 0.0
         for (dy, dz) in [(-bv / 2, -hv / 2), (+bv / 2, -hv / 2),
                          (+bv / 2, +hv / 2), (-bv / 2, +hv / 2)]:
             vx.append(float(x))
