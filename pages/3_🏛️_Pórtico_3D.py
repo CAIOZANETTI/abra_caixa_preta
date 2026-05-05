@@ -404,13 +404,22 @@ def construir_fig_3d(p: Portico, res: dict, modo: str = "M") -> go.Figure:
               f"L={p.L:.1f} m · H={p.H:.1f} m · q={p.q:.0f} kN/m  |  "
               f"M_canto = {res['M_canto_kNm']:.1f} kN·m · "
               f"V_max = {res['V_max_viga_kN']:.1f} kN")
+    # Ranges fixos cobrindo os limites máximos da sidebar (L até 20 m,
+    # H até 15 m, h_viga até 1.20 m, b_pilar até 0.80 m). Com isso o
+    # enquadramento NÃO muda quando o usuário ajusta L, H, q — a
+    # estrutura cresce/diminui dentro de um canvas de tamanho fixo,
+    # evidenciando a evolução geométrica.
     fig.update_layout(
         title=dict(text=titulo, x=0.5, xanchor="center", font=dict(size=13)),
         scene=dict(
-            xaxis=dict(title="x (m)", backgroundcolor="white"),
-            yaxis=dict(title="y (m)", backgroundcolor="white"),
-            zaxis=dict(title="z (m) — altura", backgroundcolor="white"),
-            aspectmode="data",
+            xaxis=dict(title="x (m)", backgroundcolor="white",
+                       range=[-1.0, 21.0]),
+            yaxis=dict(title="y (m)", backgroundcolor="white",
+                       range=[-1.0, 1.0]),
+            zaxis=dict(title="z (m) — altura", backgroundcolor="white",
+                       range=[-1.0, 17.0]),
+            aspectmode="manual",
+            aspectratio=dict(x=2.0, y=0.3, z=1.6),
             camera=dict(eye=dict(x=1.6, y=-1.6, z=0.7),
                         projection=dict(type="perspective")),
         ),
@@ -418,8 +427,7 @@ def construir_fig_3d(p: Portico, res: dict, modo: str = "M") -> go.Figure:
         margin=dict(l=10, r=10, t=70, b=10),
         paper_bgcolor="white",
         legend=dict(x=0.0, y=1.0, bgcolor="rgba(255,255,255,0.7)"),
-        # Mantém ângulo/zoom da câmera quando o usuário troca L, H, q etc.
-        # — só recalcula a estrutura interna sem resetar a vista.
+        # Mantém ângulo da câmera quando o usuário troca L, H, q etc.
         uirevision="portico_3d_camera",
     )
     return fig
